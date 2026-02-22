@@ -1,0 +1,33 @@
+pre-commit:
+  parallel: true
+  jobs:
+    - name: eslint
+      glob: "*.{ts,vue}"
+      run: npx eslint {staged_files}
+
+    - name: prettier
+      glob: "*.{ts,vue,css,html,json}"
+      run: npx prettier --check {staged_files}
+
+    - name: typecheck
+      run: npx vue-tsc --noEmit
+
+    - name: rustfmt
+      root: "src-tauri/"
+      glob: "*.rs"
+      run: cargo fmt --check
+
+    - name: clippy
+      root: "src-tauri/"
+      glob: "*.rs"
+      run: cargo clippy -- -D warnings
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: frontend-tests
+      run: npm run test
+
+    - name: rust-tests
+      root: "src-tauri/"
+      run: cargo test

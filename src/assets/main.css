@@ -1,0 +1,320 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Spool Design System — Design Tokens
+   ============================================================ */
+
+@theme {
+  /* --- Surfaces --- */
+  --color-surface-base: #171717;
+  --color-surface-sidebar: #1A1A1A;
+  --color-surface-raised: #262626;
+  --color-surface-overlay: #303030;
+  --color-surface-elevated: #3F3F46;
+
+  /* --- Text --- */
+  --color-text-primary: #EDEDED;
+  --color-text-secondary: #999999;
+  --color-text-tertiary: #737373;
+  --color-text-muted: #525252;
+
+  /* --- Accent --- */
+  --color-accent: #F59E0B;
+  --color-accent-strong: #D97706;
+  --color-accent-subtle: rgba(245, 158, 11, 0.1);
+
+  /* --- Status --- */
+  --color-success: #22C55E;
+  --color-warning: #EAB308;
+  --color-danger: #EF4444;
+  --color-info: #38BDF8;
+
+  /* --- Borders --- */
+  --color-border: #303030;
+  --color-border-subtle: rgba(255, 255, 255, 0.04);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
+
+  /* --- Typography --- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Fira Code", ui-monospace, monospace;
+
+  --text-2xs: 10px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 17px;
+
+  /* --- Border Radius --- */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+
+  /* --- Shadows --- */
+  --shadow-inset: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
+  --shadow-inset-strong: inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 14px 30px -10px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 20px 40px -12px rgba(0, 0, 0, 0.6);
+  --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
+
+  /* --- Animations --- */
+  --animate-fade-in: fade-in 150ms ease-out;
+  --animate-content-fade-in: content-fade-in 200ms ease-out;
+  --animate-scale-in: scale-in 200ms ease;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes content-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}
+
+/* ============================================================
+   Base Reset
+   ============================================================ */
+
+html {
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: var(--color-surface-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ============================================================
+   Card / Glass Panel
+   ============================================================ */
+
+.card {
+  background: color-mix(in srgb, #0e0e0e 42%, transparent);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid color-mix(in srgb, white 4%, transparent);
+  box-shadow: var(--shadow-inset);
+}
+
+.card-inset {
+  background: color-mix(in srgb, var(--color-surface-base) 60%, var(--color-surface-raised));
+  border: 1px solid var(--color-border-subtle);
+  padding: 1.25rem;
+}
+
+/* ============================================================
+   Sidebar
+   ============================================================ */
+
+.sidebar {
+  background: color-mix(in srgb, #0e0e0e 42%, transparent);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border-right: 1px solid color-mix(in srgb, white 6%, transparent);
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.02);
+}
+
+/* ============================================================
+   Page Header
+   ============================================================ */
+
+.page-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in srgb, var(--color-surface-base) 60%, transparent);
+  backdrop-filter: blur(24px) saturate(1.4);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+/* ============================================================
+   Backdrop and Modal
+   ============================================================ */
+
+.backdrop {
+  background: rgba(0, 0, 0, 0.40);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.modal {
+  background: var(--color-surface-base);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-xl);
+}
+
+/* ============================================================
+   Segment Chip
+   ============================================================ */
+
+.segment-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-md);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 150ms ease;
+}
+
+/* ============================================================
+   Control Field (Small)
+   ============================================================ */
+
+.control-field-sm {
+  height: 2rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-base);
+  font-size: var(--text-xs);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.control-field-sm:hover {
+  border-color: var(--color-border-strong);
+}
+
+.control-field-sm:focus {
+  border-color: var(--color-accent);
+  box-shadow: var(--shadow-focus);
+  outline: none;
+}
+
+/* ============================================================
+   Ambient Blobs
+   ============================================================ */
+
+.ambient-blobs {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.ambient-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(100px);
+  opacity: 0.07;
+  will-change: transform;
+}
+
+.blob-1 {
+  width: 800px;
+  height: 800px;
+  top: -25%;
+  right: -10%;
+  background: var(--color-accent);
+  animation: blob-drift-1 25s ease-in-out infinite alternate;
+}
+
+.blob-2 {
+  width: 700px;
+  height: 700px;
+  bottom: -20%;
+  left: -10%;
+  background: #D97706;
+  animation: blob-drift-2 30s ease-in-out infinite alternate;
+}
+
+.blob-3 {
+  width: 600px;
+  height: 600px;
+  top: 50%;
+  right: 35%;
+  background: #B45309;
+  animation: blob-drift-3 20s ease-in-out infinite alternate;
+}
+
+@keyframes blob-drift-1 {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(-40px, 30px) scale(1.05); }
+}
+
+@keyframes blob-drift-2 {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(30px, -20px) scale(1.03); }
+}
+
+@keyframes blob-drift-3 {
+  from { transform: translate(0, 0) scale(1); }
+  to { transform: translate(-20px, -30px) scale(1.07); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ambient-blob { animation: none !important; }
+}
+
+.page-hidden .ambient-blob {
+  animation-play-state: paused;
+}
+
+/* ============================================================
+   Stagger Fade-In
+   ============================================================ */
+
+.stagger-fade-in > * {
+  opacity: 0;
+  animation: fade-in 200ms ease-out forwards;
+}
+.stagger-fade-in > *:nth-child(1) { animation-delay: 0ms; }
+.stagger-fade-in > *:nth-child(2) { animation-delay: 30ms; }
+.stagger-fade-in > *:nth-child(3) { animation-delay: 60ms; }
+.stagger-fade-in > *:nth-child(4) { animation-delay: 90ms; }
+.stagger-fade-in > *:nth-child(5) { animation-delay: 120ms; }
+.stagger-fade-in > *:nth-child(n+6) { animation-delay: 150ms; }
+
+/* ============================================================
+   Titlebar Drag Region
+   ============================================================ */
+
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* ============================================================
+   Scrollbars
+   ============================================================ */
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--color-accent) 66%, transparent); }
+::-webkit-scrollbar-thumb:active { background: color-mix(in srgb, var(--color-accent) 80%, transparent); }
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--color-accent) 45%, transparent) transparent;
+}
