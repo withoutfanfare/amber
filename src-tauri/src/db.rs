@@ -72,6 +72,9 @@ fn migrations() -> Migrations<'static> {
         M::up(
             "ALTER TABLE profiles ADD COLUMN environment TEXT CHECK(environment IN ('local','staging','live'));",
         ),
+        M::up(
+            "ALTER TABLE snapshots ADD COLUMN checksum TEXT;",
+        ),
     ])
 }
 

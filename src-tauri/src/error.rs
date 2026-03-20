@@ -36,7 +36,10 @@ pub enum DsmError {
     SnapshotNotFound(String),
 
     #[error("Cannot restore {snapshot_type} snapshot to {profile_type} profile")]
-    DbTypeMismatch { snapshot_type: String, profile_type: String },
+    DbTypeMismatch {
+        snapshot_type: String,
+        profile_type: String,
+    },
 }
 
 /// Structured JSON payload sent to the frontend for all errors.

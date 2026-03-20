@@ -1,6 +1,8 @@
 // Scaffold phase: utility modules are not yet called from commands.
 #![allow(dead_code)]
 
+mod checksum;
+mod classify;
 mod commands;
 mod compress;
 mod credentials;
@@ -61,6 +63,7 @@ pub fn run() {
             commands::snapshot_restore,
             commands::snapshot_delete,
             commands::snapshot_delete_by_project,
+            commands::snapshot_verify_integrity,
             commands::restore_history_list,
             commands::get_snapshots_dir,
             commands::storage_usage,
