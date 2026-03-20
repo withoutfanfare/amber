@@ -11,7 +11,7 @@ pub fn mysql_create_db_args(defaults_file: &str, database: &str) -> Vec<String> 
     ]
 }
 
-/// Build arguments to check if a PostgreSQL database exists via `psql`.
+/// Build arguments to check if a `PostgreSQL` database exists via `psql`.
 /// Connects to the `postgres` default database to run the existence check.
 pub fn pg_check_db_args(host: &str, port: u16, username: &str, database: &str) -> Vec<String> {
     vec![
@@ -27,7 +27,7 @@ pub fn pg_check_db_args(host: &str, port: u16, username: &str, database: &str) -
     ]
 }
 
-/// Build arguments to create a PostgreSQL database via `psql`.
+/// Build arguments to create a `PostgreSQL` database via `psql`.
 /// Connects to the `postgres` default database to run CREATE DATABASE.
 pub fn pg_create_db_args(host: &str, port: u16, username: &str, database: &str) -> Vec<String> {
     vec![
@@ -43,7 +43,7 @@ pub fn pg_create_db_args(host: &str, port: u16, username: &str, database: &str) 
     ]
 }
 
-/// Ensure the parent directory exists for a SQLite database file path.
+/// Ensure the parent directory exists for a `SQLite` database file path.
 pub fn ensure_sqlite_parent_dir(database_path: &str) -> Result<(), DsmError> {
     let path = Path::new(database_path);
     if let Some(parent) = path.parent() {
@@ -53,7 +53,7 @@ pub fn ensure_sqlite_parent_dir(database_path: &str) -> Result<(), DsmError> {
 }
 
 /// Validate that the snapshot's database type matches the target profile's database type.
-/// Cross-type restores (e.g. MySQL snapshot -> PostgreSQL profile) are not supported.
+/// Cross-type restores (e.g. `MySQL` snapshot -> `PostgreSQL` profile) are not supported.
 pub fn validate_db_type_match(snapshot_type: &str, target_type: &str) -> Result<(), DsmError> {
     if snapshot_type != target_type {
         return Err(DsmError::DbTypeMismatch {

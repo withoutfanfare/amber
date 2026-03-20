@@ -26,7 +26,7 @@ export default typescriptEslint.config(
     rules: {
       "vue/multi-word-component-names": "off",
       "vue/no-unused-vars": "error",
-      "vue/component-tags-order": ["error", { order: ["script", "template", "style"] }],
+      "vue/block-order": ["error", { order: ["script", "template", "style"] }],
       "vue/define-macros-order": ["error", { order: ["defineProps", "defineEmits"] }],
       "vue/block-lang": ["error", { script: { lang: "ts" } }],
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],

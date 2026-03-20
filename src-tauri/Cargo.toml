@@ -28,6 +28,7 @@ keyring = { version = "3", features = ["apple-native"] }
 fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 tokio = { version = "1", features = ["process", "io-util", "time", "fs"] }
 which = "7"
+sha2 = "0.10"
 
 [dev-dependencies]
 tempfile = "3"

@@ -82,6 +82,7 @@ pub struct Snapshot {
     pub size_bytes: u64,
     pub db_version: Option<String>,
     pub dump_tool_version: Option<String>,
+    pub checksum: Option<String>,
     pub created_at: String,
     pub restored_at: Option<String>,
 }
@@ -93,6 +94,8 @@ pub struct ConnectionTestResult {
     pub message: String,
     pub db_version: Option<String>,
     pub latency_ms: u64,
+    pub error_kind: Option<String>,
+    pub remediation: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -466,13 +469,21 @@ pub async fn profile_test_connection(
             message: "Connection successful".to_string(),
             db_version: Some(db_version),
             latency_ms,
+            error_kind: None,
+            remediation: None,
         }),
-        Err(e) => Ok(ConnectionTestResult {
-            success: false,
-            message: e.to_string(),
-            db_version: None,
-            latency_ms,
-        }),
+        Err(e) => {
+            let classified =
+                crate::classify::classify_connection_error(&profile.db_type, &e.to_string());
+            Ok(ConnectionTestResult {
+                success: false,
+                message: classified.message,
+                db_version: None,
+                latency_ms,
+                error_kind: Some(classified.kind.to_string()),
+                remediation: Some(classified.remediation),
+            })
+        }
     }
 }
 
@@ -596,6 +607,7 @@ fn row_to_snapshot(row: &rusqlite::Row) -> Result<Snapshot, rusqlite::Error> {
         size_bytes: row.get::<_, i64>("size_bytes")? as u64,
         db_version: row.get("db_version")?,
         dump_tool_version: row.get("dump_tool_version")?,
+        checksum: row.get("checksum")?,
         created_at: row.get("created_at")?,
         restored_at: row.get("restored_at")?,
     })
@@ -834,6 +846,21 @@ pub async fn snapshot_create(
         let _ = t.close().await;
     }
 
+    // Compute SHA-256 checksum of the compressed snapshot file
+    let _ = on_progress.send(SnapshotProgress::Phase {
+        phase: "checksum".to_string(),
+        message: "Computing integrity checksum...".to_string(),
+    });
+
+    let checksum_path = output_path.clone();
+    let checksum =
+        tokio::task::spawn_blocking(move || crate::checksum::compute_sha256(&checksum_path))
+            .await
+            .map_err(|e| DsmError::DumpError {
+                message: format!("Checksum task failed: {e}"),
+                output: String::new(),
+            })??;
+
     // Save metadata
     let _ = on_progress.send(SnapshotProgress::Phase {
         phase: "saving".to_string(),
@@ -844,8 +871,8 @@ pub async fn snapshot_create(
     {
         let conn = lock_db(&db)?;
         conn.execute(
-            "INSERT INTO snapshots (id, profile_id, name, note, file_path, size_bytes, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO snapshots (id, profile_id, name, note, file_path, size_bytes, checksum, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 snapshot_id,
                 profile_id,
@@ -853,6 +880,7 @@ pub async fn snapshot_create(
                 note,
                 relative_path,
                 size_bytes.cast_signed(),
+                checksum,
                 now,
             ],
         )?;
@@ -874,6 +902,7 @@ pub async fn snapshot_create(
         size_bytes,
         db_version: None,
         dump_tool_version: None,
+        checksum: Some(checksum),
         created_at: now,
         restored_at: None,
     })
@@ -951,9 +980,39 @@ pub async fn snapshot_restore(
         (snap, prof)
     };
 
+    // Verify snapshot integrity before proceeding with restore
+    if let Some(ref expected_checksum) = snapshot.checksum {
+        let gz_path = paths.snapshots_dir.join(&snapshot.file_path);
+        if !gz_path.exists() {
+            return Err(DsmError::RestoreError {
+                message: "Snapshot file is missing from disk.".to_string(),
+                output: String::new(),
+            });
+        }
+
+        let path = gz_path.clone();
+        let actual = tokio::task::spawn_blocking(move || crate::checksum::compute_sha256(&path))
+            .await
+            .map_err(|e| DsmError::RestoreError {
+                message: format!("Integrity check failed: {e}"),
+                output: String::new(),
+            })??;
+
+        if actual != *expected_checksum {
+            return Err(DsmError::RestoreError {
+                message: format!(
+                    "Integrity check FAILED — the snapshot file has been modified or corrupted.\nExpected: {expected_checksum}\nActual:   {actual}"
+                ),
+                output: String::new(),
+            });
+        }
+    }
+
     // Resolve effective profile — use target override if provided
     let profile = if let Some(ref target_id) = options.target_profile_id {
-        if *target_id != snapshot.profile_id {
+        if *target_id == snapshot.profile_id {
+            original_profile
+        } else {
             let conn = lock_db(&db)?;
             let target_profile = conn
                 .query_row(
@@ -975,8 +1034,6 @@ pub async fn snapshot_restore(
             )?;
 
             target_profile
-        } else {
-            original_profile
         }
     } else {
         original_profile
@@ -1038,7 +1095,7 @@ pub async fn snapshot_restore(
     if options.target_database_name.is_some() {
         let _ = on_progress.send(SnapshotProgress::Phase {
             phase: "creating_database".to_string(),
-            message: format!("Ensuring database '{}' exists...", effective_db_name),
+            message: format!("Ensuring database '{effective_db_name}' exists..."),
         });
 
         match profile.db_type.as_str() {
@@ -1067,7 +1124,9 @@ pub async fn snapshot_restore(
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
                     return Err(DsmError::RestoreError {
-                        message: format!("Failed to create MySQL database '{}': {}", effective_db_name, stderr),
+                        message: format!(
+                            "Failed to create MySQL database '{effective_db_name}': {stderr}"
+                        ),
                         output: stderr,
                     });
                 }
@@ -1094,7 +1153,9 @@ pub async fn snapshot_restore(
                         output: String::new(),
                     })?;
 
-                let stdout = String::from_utf8_lossy(&check_output.stdout).trim().to_string();
+                let stdout = String::from_utf8_lossy(&check_output.stdout)
+                    .trim()
+                    .to_string();
                 if stdout != "1" {
                     // Database doesn't exist, create it
                     let create_args = crate::ensure_db::pg_create_db_args(
@@ -1113,9 +1174,11 @@ pub async fn snapshot_restore(
                             output: String::new(),
                         })?;
                     if !create_output.status.success() {
-                        let stderr = String::from_utf8_lossy(&create_output.stderr).trim().to_string();
+                        let stderr = String::from_utf8_lossy(&create_output.stderr)
+                            .trim()
+                            .to_string();
                         return Err(DsmError::RestoreError {
-                            message: format!("Failed to create PostgreSQL database '{}': {}", effective_db_name, stderr),
+                            message: format!("Failed to create PostgreSQL database '{effective_db_name}': {stderr}"),
                             output: stderr,
                         });
                     }
@@ -1133,7 +1196,7 @@ pub async fn snapshot_restore(
 
     let _ = on_progress.send(SnapshotProgress::Phase {
         phase: "restoring".to_string(),
-        message: format!("Restoring to {}...", effective_db_name),
+        message: format!("Restoring to {effective_db_name}..."),
     });
 
     match profile.db_type.as_str() {
@@ -1424,6 +1487,83 @@ pub async fn snapshot_delete_by_project(
     Ok(())
 }
 
+// -- Integrity Commands -------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IntegrityResult {
+    pub snapshot_id: String,
+    pub valid: bool,
+    pub expected_checksum: Option<String>,
+    pub actual_checksum: Option<String>,
+    pub message: String,
+}
+
+#[tauri::command]
+pub async fn snapshot_verify_integrity(
+    db: State<'_, DbState>,
+    paths: State<'_, AppPaths>,
+    snapshot_id: String,
+) -> Result<IntegrityResult, DsmError> {
+    let snapshot = {
+        let conn = lock_db(&db)?;
+        conn.query_row(
+            "SELECT * FROM snapshots WHERE id = ?1",
+            params![snapshot_id],
+            row_to_snapshot,
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => DsmError::SnapshotNotFound(snapshot_id.clone()),
+            other => DsmError::DatabaseError(other),
+        })?
+    };
+
+    let Some(expected) = &snapshot.checksum else {
+        return Ok(IntegrityResult {
+            snapshot_id,
+            valid: false,
+            expected_checksum: None,
+            actual_checksum: None,
+            message:
+                "No checksum recorded — snapshot was created before integrity tracking was enabled."
+                    .to_string(),
+        });
+    };
+
+    let gz_path = paths.snapshots_dir.join(&snapshot.file_path);
+    if !gz_path.exists() {
+        return Ok(IntegrityResult {
+            snapshot_id,
+            valid: false,
+            expected_checksum: Some(expected.clone()),
+            actual_checksum: None,
+            message: "Snapshot file is missing from disk.".to_string(),
+        });
+    }
+
+    let path = gz_path.clone();
+    let actual = tokio::task::spawn_blocking(move || crate::checksum::compute_sha256(&path))
+        .await
+        .map_err(|e| {
+            DsmError::FileSystemError(std::io::Error::other(format!("Checksum task failed: {e}")))
+        })??;
+
+    let valid = actual == *expected;
+    let message = if valid {
+        "Integrity verified — checksum matches.".to_string()
+    } else {
+        "Integrity check FAILED — the snapshot file has been modified or corrupted.".to_string()
+    };
+
+    Ok(IntegrityResult {
+        snapshot_id,
+        valid,
+        expected_checksum: Some(expected.clone()),
+        actual_checksum: Some(actual),
+        message,
+    })
+}
+
 // -- Restore History Commands -------------------------------------------------
 
 #[tauri::command]
@@ -1433,9 +1573,8 @@ pub async fn restore_history_list(
 ) -> Result<Vec<RestoreRecord>, DsmError> {
     let conn = lock_db(&db)?;
     let effective_limit = limit.unwrap_or(100);
-    let mut stmt = conn.prepare(
-        "SELECT * FROM restore_history ORDER BY restored_at DESC LIMIT ?1",
-    )?;
+    let mut stmt =
+        conn.prepare("SELECT * FROM restore_history ORDER BY restored_at DESC LIMIT ?1")?;
     let records = stmt
         .query_map(params![effective_limit], row_to_restore_record)?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1541,7 +1680,9 @@ mod tests {
     fn test_db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();
         conn.pragma_update(None, "foreign_keys", "ON").unwrap();
-        crate::db::migrations_for_test().to_latest(&mut conn).unwrap();
+        crate::db::migrations_for_test()
+            .to_latest(&mut conn)
+            .unwrap();
         conn
     }
 

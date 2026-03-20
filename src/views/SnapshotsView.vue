@@ -1,111 +1,124 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { invoke } from '@tauri-apps/api/core'
-import { revealItemInDir } from '@tauri-apps/plugin-opener'
-import { useProfileStore } from '@/stores/profiles'
-import { useSnapshotStore } from '@/stores/snapshots'
-import { useToast } from '@/composables/useToast'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import Button from '@/components/ui/Button.vue'
-import FormSelect from '@/components/ui/FormSelect.vue'
-import EmptyState from '@/components/ui/EmptyState.vue'
-import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
-import SnapshotTable from '@/components/features/SnapshotTable.vue'
-import SnapshotRestoreDialog from '@/components/features/SnapshotRestoreDialog.vue'
-import type { Snapshot, SnapshotRestoreOptions } from '@/types'
+  import { ref, computed, watch, onMounted } from "vue";
+  import { useRouter } from "vue-router";
+  import { invoke } from "@tauri-apps/api/core";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { useProfileStore } from "@/stores/profiles";
+  import { useSnapshotStore } from "@/stores/snapshots";
+  import { useToast } from "@/composables/useToast";
+  import PageHeader from "@/components/layout/PageHeader.vue";
+  import Button from "@/components/ui/Button.vue";
+  import FormSelect from "@/components/ui/FormSelect.vue";
+  import EmptyState from "@/components/ui/EmptyState.vue";
+  import ConfirmDialog from "@/components/ui/ConfirmDialog.vue";
+  import SnapshotTable from "@/components/features/SnapshotTable.vue";
+  import SnapshotRestoreDialog from "@/components/features/SnapshotRestoreDialog.vue";
+  import type { Snapshot, SnapshotRestoreOptions } from "@/types";
 
-const snapshotsDir = ref('')
+  const snapshotsDir = ref("");
 
-const router = useRouter()
-const profileStore = useProfileStore()
-const snapshotStore = useSnapshotStore()
-const toast = useToast()
+  const router = useRouter();
+  const profileStore = useProfileStore();
+  const snapshotStore = useSnapshotStore();
+  const toast = useToast();
 
-const selectedProfileId = ref<string>('all')
-const restoreDialogOpen = ref(false)
-const deleteDialogOpen = ref(false)
-const targetSnapshot = ref<Snapshot | null>(null)
+  const selectedProfileId = ref<string>("all");
+  const restoreDialogOpen = ref(false);
+  const deleteDialogOpen = ref(false);
+  const targetSnapshot = ref<Snapshot | null>(null);
 
-const sourceProfile = computed(() => {
-  if (!targetSnapshot.value) return null
-  return profileStore.profiles.find(p => p.id === targetSnapshot.value!.profileId) ?? null
-})
+  const sourceProfile = computed(() => {
+    if (!targetSnapshot.value) return null;
+    return profileStore.profiles.find((p) => p.id === targetSnapshot.value!.profileId) ?? null;
+  });
 
-const profileFilterOptions = computed(() => [
-  { value: 'all', label: 'All Profiles' },
-  ...profileStore.profiles.map(p => ({
-    value: p.id,
-    label: `${p.project} / ${p.name}`,
-  })),
-])
+  const profileFilterOptions = computed(() => [
+    { value: "all", label: "All Profiles" },
+    ...profileStore.profiles.map((p) => ({
+      value: p.id,
+      label: `${p.project} / ${p.name}`,
+    })),
+  ]);
 
-onMounted(async () => {
-  snapshotsDir.value = await invoke<string>('get_snapshots_dir')
-  if (profileStore.profiles.length === 0) {
-    await profileStore.fetchAll()
+  onMounted(async () => {
+    snapshotsDir.value = await invoke<string>("get_snapshots_dir");
+    if (profileStore.profiles.length === 0) {
+      await profileStore.fetchAll();
+    }
+    loadSnapshots();
+  });
+
+  watch(selectedProfileId, () => {
+    loadSnapshots();
+  });
+
+  function loadSnapshots() {
+    if (selectedProfileId.value === "all") {
+      snapshotStore.fetchAll();
+    } else {
+      snapshotStore.fetchForProfile(selectedProfileId.value);
+    }
   }
-  loadSnapshots()
-})
 
-watch(selectedProfileId, () => {
-  loadSnapshots()
-})
-
-function loadSnapshots() {
-  if (selectedProfileId.value === 'all') {
-    snapshotStore.fetchAll()
-  } else {
-    snapshotStore.fetchForProfile(selectedProfileId.value)
+  function handleRestoreRequest(id: string) {
+    targetSnapshot.value = snapshotStore.snapshots.find((s) => s.id === id) ?? null;
+    restoreDialogOpen.value = true;
   }
-}
 
-function handleRestoreRequest(id: string) {
-  targetSnapshot.value = snapshotStore.snapshots.find(s => s.id === id) ?? null
-  restoreDialogOpen.value = true
-}
-
-async function handleRestoreConfirm(options: SnapshotRestoreOptions) {
-  if (!targetSnapshot.value) return
-  const name = targetSnapshot.value.name
-  restoreDialogOpen.value = false
-  try {
-    await snapshotStore.restore(targetSnapshot.value.id, options)
-    toast.success(`Snapshot "${name}" restored.`)
-  } catch (e) {
-    toast.error(`Failed to restore snapshot: ${e}`)
-  } finally {
-    targetSnapshot.value = null
+  async function handleRestoreConfirm(options: SnapshotRestoreOptions) {
+    if (!targetSnapshot.value) return;
+    const name = targetSnapshot.value.name;
+    restoreDialogOpen.value = false;
+    try {
+      await snapshotStore.restore(targetSnapshot.value.id, options);
+      toast.success(`Snapshot "${name}" restored.`);
+    } catch (e) {
+      toast.error(`Failed to restore snapshot: ${e}`);
+    } finally {
+      targetSnapshot.value = null;
+    }
   }
-}
 
-async function handleReveal(snapshot: Snapshot) {
-  if (!snapshotsDir.value) return
-  try {
-    await revealItemInDir(`${snapshotsDir.value}/${snapshot.filePath}`)
-  } catch (e) {
-    toast.error(`Failed to reveal file: ${e}`)
+  async function handleReveal(snapshot: Snapshot) {
+    if (!snapshotsDir.value) return;
+    try {
+      await revealItemInDir(`${snapshotsDir.value}/${snapshot.filePath}`);
+    } catch (e) {
+      toast.error(`Failed to reveal file: ${e}`);
+    }
   }
-}
 
-function handleDeleteRequest(id: string) {
-  targetSnapshot.value = snapshotStore.snapshots.find(s => s.id === id) ?? null
-  deleteDialogOpen.value = true
-}
-
-async function handleDeleteConfirm() {
-  if (!targetSnapshot.value) return
-  const name = targetSnapshot.value.name
-  deleteDialogOpen.value = false
-  try {
-    await snapshotStore.remove(targetSnapshot.value.id)
-    toast.success(`Snapshot "${name}" deleted.`)
-  } catch (e) {
-    toast.error(`Failed to delete snapshot: ${e}`)
-  } finally {
-    targetSnapshot.value = null
+  function handleDeleteRequest(id: string) {
+    targetSnapshot.value = snapshotStore.snapshots.find((s) => s.id === id) ?? null;
+    deleteDialogOpen.value = true;
   }
-}
+
+  async function handleDeleteConfirm() {
+    if (!targetSnapshot.value) return;
+    const name = targetSnapshot.value.name;
+    deleteDialogOpen.value = false;
+    try {
+      await snapshotStore.remove(targetSnapshot.value.id);
+      toast.success(`Snapshot "${name}" deleted.`);
+    } catch (e) {
+      toast.error(`Failed to delete snapshot: ${e}`);
+    } finally {
+      targetSnapshot.value = null;
+    }
+  }
+
+  async function handleVerify(id: string) {
+    try {
+      const result = await snapshotStore.verifyIntegrity(id);
+      if (result.valid) {
+        toast.success("Integrity verified — checksum matches.");
+      } else {
+        toast.error(result.message);
+      }
+    } catch (e) {
+      toast.error(`Integrity check failed: ${e}`);
+    }
+  }
 </script>
 
 <template>
@@ -113,7 +126,9 @@ async function handleDeleteConfirm() {
     <PageHeader>
       <template #prepend>
         <h1 class="text-lg font-semibold">Snapshots</h1>
-        <p class="text-sm text-text-tertiary">Snapshots are compressed backups of your database at a point in time.</p>
+        <p class="text-sm text-text-tertiary">
+          Snapshots are compressed backups of your database at a point in time.
+        </p>
       </template>
       <template #actions>
         <Button variant="primary" size="sm" to="/snapshots/create">New Snapshot</Button>
@@ -142,7 +157,7 @@ async function handleDeleteConfirm() {
     </div>
 
     <!-- Loading state -->
-    <div v-if="snapshotStore.loading" class="text-sm text-text-secondary py-8 text-center">
+    <div v-if="snapshotStore.loading" class="py-8 text-center text-sm text-text-secondary">
       Loading snapshots&hellip;
     </div>
 
@@ -163,6 +178,7 @@ async function handleDeleteConfirm() {
       @restore="handleRestoreRequest"
       @reveal="handleReveal"
       @delete="handleDeleteRequest"
+      @verify="handleVerify"
     />
 
     <!-- Restore dialog -->
