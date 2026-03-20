@@ -69,6 +69,30 @@ pub fn run() {
             commands::storage_usage,
             commands::settings_list,
             commands::settings_set,
+            // Tagging
+            commands::snapshot_add_tags,
+            commands::snapshot_remove_tag,
+            commands::snapshot_list_all_tags,
+            // Pinning
+            commands::snapshot_set_pinned,
+            // Size estimation
+            commands::snapshot_estimate_size,
+            // Tool discovery
+            commands::discover_tools,
+            commands::save_tool_path,
+            commands::get_setup_complete,
+            // Retention policies
+            commands::retention_policy_get,
+            commands::retention_policy_set,
+            commands::retention_enforce,
+            // Schema comparison
+            commands::snapshot_compare_schema,
+            // Restore preview
+            commands::snapshot_restore_preview,
+            // Version compatibility
+            commands::snapshot_check_version_compatibility,
+            // SQL export
+            commands::snapshot_export_sql,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

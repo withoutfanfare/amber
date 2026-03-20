@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Database Snapshot Manager — a Tauri 2 desktop application providing git-like version control for local development databases. Currently at MVP stage: snapshot/restore operations are simulated in the UI with localStorage persistence (no real `mysqldump`/`pg_dump` execution yet).
+Database Snapshot Manager — a Tauri 2 desktop application providing git-like version control for local development databases. Production-ready with real `mysqldump`/`pg_dump`/`sqlite3` subprocess execution, SQLite metadata persistence, and comprehensive snapshot management (tagging, retention policies, schema comparison, version compatibility, export).
 
 ## Development Commands
 
@@ -22,20 +22,20 @@ There are no test, lint, or formatting commands configured.
 
 **Tauri 2 hybrid app:** TypeScript frontend + Rust backend communicating via Tauri IPC.
 
-- **`src/main.ts`** — Single-file vanilla TypeScript frontend. All UI logic lives here: type definitions (`ConnectionProfile`, `Snapshot`), state management, DOM rendering, and localStorage persistence (`dsm.profiles.v1`, `dsm.snapshots.v1`). No framework — direct DOM manipulation.
-- **`src-tauri/src/lib.rs`** — Rust backend entry point. Currently minimal (only a `greet` test command). Future home of subprocess execution (database dumps), credential management, and file I/O.
+- **`src/main.ts`** — Vue 3 + Pinia entry point. Frontend uses Vue SFCs with TypeScript, @stuntrocket/ui design system components, and Tauri IPC for backend communication.
+- **`src-tauri/src/lib.rs`** — Rust backend entry point. Manages SQLite metadata DB, subprocess execution for database dumps/restores, credential storage via macOS Keychain, SSH tunnelling, and all Tauri commands.
 - **`src-tauri/src/main.rs`** — Thin launcher that calls `lib.rs::run()`.
 - **`src-tauri/tauri.conf.json`** — Tauri config: window size (800×600), bundle targets, dev server URL, build commands.
 
-**Data flow:** Frontend manages all state in-memory arrays, persists to localStorage. Rust backend is scaffolded but not yet used for data operations.
+**Data flow:** Frontend uses Pinia stores that call Rust backend via `invoke()`. Rust backend manages SQLite metadata, credential storage, subprocess execution, and file I/O.
 
 ## Key Technical Decisions
 
-- **No frontend framework** — vanilla TypeScript with direct DOM manipulation
+- **Vue 3 + Pinia** — migrated from vanilla TypeScript; uses @stuntrocket/ui design system components
 - **ES modules** (`"type": "module"` in package.json), target ES2020
 - **TypeScript strict mode** enabled with `noUnusedLocals` and `noUnusedParameters`
 - **macOS only** target for Phase 1
-- **localStorage** for MVP persistence; SQLite metadata backend planned for production
+- **SQLite** for metadata persistence (profiles, snapshots, settings, tags, retention policies)
 
 ## Reference Documents
 

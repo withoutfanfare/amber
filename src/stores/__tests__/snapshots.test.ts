@@ -102,6 +102,8 @@ describe("useSnapshotStore", () => {
           checksum: null,
           createdAt: "2026-01-01T00:00:00Z",
           restoredAt: null,
+          pinned: false,
+          tags: [],
         },
       ];
       await store.restore("snap-1");

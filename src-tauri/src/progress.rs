@@ -17,6 +17,13 @@ pub enum SnapshotProgress {
         bytes_processed: u64,
     },
     #[serde(rename_all = "camelCase")]
+    TableProgress {
+        current_table: String,
+        tables_completed: u32,
+        total_tables: u32,
+        bytes_processed: u64,
+    },
+    #[serde(rename_all = "camelCase")]
     Completed {
         message: String,
         size_bytes: Option<u64>,

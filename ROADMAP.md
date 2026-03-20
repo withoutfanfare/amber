@@ -65,7 +65,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Users currently have no visibility into how large a snapshot will be before creating it. Displaying an estimated size (based on database size and compression ratio history) in the snapshot creation dialog helps users manage disk space proactively and avoid surprises with large databases.
 - **Acceptance criteria:**
   - Snapshot creation dialog shows estimated compressed size before user confirms
@@ -77,7 +78,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** The progress reporting infrastructure exists but needs to be connected to real `mysqldump`/`pg_dump` execution. For large databases, users need accurate, granular progress feedback rather than an indeterminate spinner, so they know the operation is progressing and can estimate completion time.
 - **Acceptance criteria:**
   - Progress bar updates reflect actual dump progress (table count or byte throughput)
@@ -89,7 +91,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P3 (nice-to-have)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** As the snapshot catalogue grows, users need to organise and find snapshots quickly. Tagging snapshots with labels (e.g. "pre-migration", "clean-state", "v2.1-baseline") and searching by tag, name, or database would prevent the snapshot list from becoming unmanageable, especially for developers working across multiple projects.
 - **Acceptance criteria:**
   - Users can add one or more tags when creating a snapshot or editing an existing one
@@ -102,7 +105,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Amber depends on external database tools (mysqldump, pg_dump, sqlite3) being available on the user's system. A first-run wizard that auto-discovers these tools, validates their versions, and guides the user through initial configuration would dramatically reduce setup friction and prevent confusing errors when tools are missing or incompatible.
 - **Acceptance criteria:**
   - First-run wizard triggers automatically when no profiles exist
@@ -128,7 +132,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Once real database dumps are operational, snapshots will consume significant disk space. Without retention policies, users must manually track and delete old snapshots to prevent disk exhaustion. Configurable retention rules (keep last N snapshots per profile, maximum total size, age-based expiry) with a disk usage overview would let users manage storage proactively. The Innovation auto-snapshot item proposes retention for automatic captures, but manual snapshots need the same governance.
 - **Acceptance criteria:**
   - Configurable retention policies per profile: keep last N snapshots, maximum total size, age-based expiry
@@ -141,7 +146,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** After a migration or manual schema change, developers need to understand exactly what changed in their database. Comparing two snapshots side by side — highlighting added/removed tables, column changes, index differences, and row count deltas — would turn Amber from a backup tool into a database change audit tool, giving developers confidence about what each migration actually modified.
 - **Acceptance criteria:**
   - Select any two snapshots from the same profile for comparison
@@ -154,7 +160,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-21
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Before committing to a full restore, users should be able to preview what the restore will do — whether the snapshot's schema matches the current database, approximate row count changes per table, and whether any tables in the current database would be lost. This is especially important when restoring snapshots taken before a migration, as the schema may have diverged. The integrity verification item validates the snapshot file is intact; this item validates the restore would produce the expected result.
 - **Acceptance criteria:**
   - "Preview restore" action available alongside the standard restore button
@@ -168,7 +175,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-21
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** The mysqldump and pg_dump tools have version-specific behaviours — a dump captured with mysqldump 8.0 may produce SQL that fails to import on MySQL 5.7, or uses features not available in the restore environment. Storing the dump tool version and database server version at snapshot creation time, and comparing against the current restore environment's versions, would prevent silent cross-version compatibility issues that produce corrupted restores or cryptic import errors.
 - **Acceptance criteria:**
   - Snapshot metadata records: dump tool name, dump tool version, database server version at capture time
@@ -182,7 +190,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P3 (nice-to-have)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-21
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Snapshots are stored in Amber's internal compressed format, which is efficient for the app's own restore workflow but not portable. Developers sometimes need a plain SQL file to use with other database tools, share with teammates who don't have Amber, seed CI databases, or import into database management GUIs. Exporting a snapshot as a standard uncompressed SQL dump file would make Amber's snapshots interoperable with the wider database tooling ecosystem.
 - **Acceptance criteria:**
   - "Export as SQL" action available on each snapshot in the list view and detail panel
@@ -196,7 +205,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Currently, restoring a snapshot overwrites the original database, making it a destructive operation even when the user only wants to inspect old data. Supporting restore-to-alternate-target — a temporary or user-specified database name — would let developers inspect snapshot contents, run queries against historical data, or verify a snapshot's integrity without disrupting their current development state. This is especially valuable after a migration, when developers want to compare pre-migration data with the current state without rolling back.
 - **Acceptance criteria:**
   - Restore dialog offers "Restore to original" and "Restore to new database" options
@@ -210,7 +220,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Every other app in the Tauri portfolio has keyboard shortcuts implemented or planned, but Amber has none. Developers using Amber alongside their editor and terminal need rapid access to core operations — creating snapshots, switching profiles, triggering restores — without reaching for the mouse. Standard keyboard shortcuts would bring Amber's interaction speed in line with the portfolio standard and match the keyboard-driven workflow expectations of its developer audience.
 - **Acceptance criteria:**
   - Cmd+N creates a new snapshot for the active profile

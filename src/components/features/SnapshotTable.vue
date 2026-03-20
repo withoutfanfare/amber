@@ -13,6 +13,13 @@
     delete: [id: string];
     reveal: [snapshot: Snapshot];
     verify: [id: string];
+    export: [id: string];
+    pin: [id: string, pinned: boolean];
+    addTag: [id: string];
+    removeTag: [id: string, tag: string];
+    compare: [id: string];
+    preview: [id: string];
+    versionCheck: [id: string];
   }>();
 
   type SortField = "name" | "createdAt" | "sizeBytes";
@@ -20,6 +27,7 @@
 
   const sortField = ref<SortField>("createdAt");
   const sortDirection = ref<SortDirection>("desc");
+  const selectedForCompare = ref<string[]>([]);
 
   function toggleSort(field: SortField) {
     if (sortField.value === field) {
@@ -78,119 +86,270 @@
     if (sortField.value !== field) return "";
     return sortDirection.value === "asc" ? " \u2191" : " \u2193";
   }
+
+  function toggleCompareSelect(id: string) {
+    const idx = selectedForCompare.value.indexOf(id);
+    if (idx >= 0) {
+      selectedForCompare.value.splice(idx, 1);
+    } else if (selectedForCompare.value.length < 2) {
+      selectedForCompare.value.push(id);
+    }
+  }
+
+  function handleCompare() {
+    if (selectedForCompare.value.length === 2) {
+      emit("compare", selectedForCompare.value[0]);
+    }
+  }
+
+  const canCompare = computed(() => selectedForCompare.value.length === 2);
 </script>
 
 <template>
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead>
-        <tr
-          class="border-b border-border-subtle text-left text-xs tracking-wide text-text-tertiary uppercase"
-        >
-          <th class="sortable-header px-3 py-2.5 font-semibold" @click="toggleSort('name')">
-            Name{{ sortIndicator("name") }}
-          </th>
-          <th class="px-3 py-2.5 font-semibold">Note</th>
-          <th class="px-3 py-2.5 font-semibold">Profile</th>
-          <th class="sortable-header px-3 py-2.5 font-semibold" @click="toggleSort('createdAt')">
-            Created{{ sortIndicator("createdAt") }}
-          </th>
-          <th
-            class="sortable-header px-3 py-2.5 text-right font-semibold"
-            @click="toggleSort('sizeBytes')"
+  <div>
+    <!-- Compare toolbar -->
+    <div
+      v-if="selectedForCompare.length > 0"
+      class="mb-3 flex items-center gap-3 rounded-lg bg-surface-raised px-3 py-2 text-sm"
+    >
+      <span class="text-text-secondary"
+        >{{ selectedForCompare.length }}/2 selected for comparison</span
+      >
+      <SButton v-if="canCompare" variant="primary" size="sm" @click="handleCompare">
+        Compare Schema
+      </SButton>
+      <SButton variant="ghost" size="sm" @click="selectedForCompare = []">Clear</SButton>
+    </div>
+
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr
+            class="border-b border-border-subtle text-left text-xs tracking-wide text-text-tertiary uppercase"
           >
-            Size{{ sortIndicator("sizeBytes") }}
-          </th>
-          <th class="px-3 py-2.5 text-center font-semibold">Integrity</th>
-          <th class="px-3 py-2.5 text-right font-semibold">Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr
-          v-for="snapshot in sortedSnapshots"
-          :key="snapshot.id"
-          class="table-row border-b border-border-subtle"
-        >
-          <td class="px-3 py-3">
-            <span class="font-medium text-text-primary">{{ snapshot.name }}</span>
-          </td>
-          <td class="max-w-[200px] truncate px-3 py-3 text-text-secondary">
-            {{ snapshot.note || "—" }}
-          </td>
-          <td class="px-3 py-3 text-text-secondary">
-            {{ getProfileName(snapshot.profileId) }}
-          </td>
-          <td class="px-3 py-3 whitespace-nowrap text-text-secondary">
-            {{ formatDate(snapshot.createdAt) }}
-          </td>
-          <td class="px-3 py-3 text-right font-mono whitespace-nowrap text-text-secondary">
-            {{ formatSize(snapshot.sizeBytes) }}
-          </td>
-          <td class="px-3 py-3 text-center">
-            <button
-              v-if="snapshot.checksum"
-              class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-success/80 transition-colors hover:bg-success/10 hover:text-success"
-              title="SHA-256 checksum recorded — click to verify"
-              @click="emit('verify', snapshot.id)"
+            <th class="w-8 px-2 py-2.5 font-semibold">
+              <span title="Select for comparison" class="cursor-help">Cmp</span>
+            </th>
+            <th class="sortable-header px-3 py-2.5 font-semibold" @click="toggleSort('name')">
+              Name{{ sortIndicator("name") }}
+            </th>
+            <th class="px-3 py-2.5 font-semibold">Tags</th>
+            <th class="px-3 py-2.5 font-semibold">Profile</th>
+            <th class="sortable-header px-3 py-2.5 font-semibold" @click="toggleSort('createdAt')">
+              Created{{ sortIndicator("createdAt") }}
+            </th>
+            <th
+              class="sortable-header px-3 py-2.5 text-right font-semibold"
+              @click="toggleSort('sizeBytes')"
             >
-              <svg
-                class="h-3.5 w-3.5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-              </svg>
-              Verify
-            </button>
-            <span
-              v-else
-              class="text-xs text-text-tertiary"
-              title="No checksum — created before integrity tracking"
-              >—</span
-            >
-          </td>
-          <td class="px-3 py-3 text-right">
-            <div class="flex items-center justify-end gap-1">
-              <SButton variant="ghost" size="sm" @click="emit('restore', snapshot.id)">
-                Restore
-              </SButton>
-              <SButton
-                variant="ghost"
-                size="sm"
-                @click="emit('reveal', snapshot)"
-                title="Show in Finder"
-              >
-                <svg
-                  class="h-3.5 w-3.5"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+              Size{{ sortIndicator("sizeBytes") }}
+            </th>
+            <th class="px-3 py-2.5 font-semibold">Version</th>
+            <th class="px-3 py-2.5 text-center font-semibold">Status</th>
+            <th class="px-3 py-2.5 text-right font-semibold">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr
+            v-for="snapshot in sortedSnapshots"
+            :key="snapshot.id"
+            class="table-row border-b border-border-subtle"
+            :class="{ 'bg-accent/5': selectedForCompare.includes(snapshot.id) }"
+          >
+            <!-- Compare checkbox -->
+            <td class="px-2 py-3">
+              <input
+                type="checkbox"
+                :checked="selectedForCompare.includes(snapshot.id)"
+                :disabled="
+                  !selectedForCompare.includes(snapshot.id) && selectedForCompare.length >= 2
+                "
+                class="h-3.5 w-3.5 rounded border-border accent-accent"
+                @change="toggleCompareSelect(snapshot.id)"
+              />
+            </td>
+            <!-- Name + pinned indicator -->
+            <td class="px-3 py-3">
+              <div class="flex items-center gap-1.5">
+                <button
+                  v-if="snapshot.pinned"
+                  class="text-accent"
+                  title="Pinned — protected from auto-cleanup"
+                  @click="emit('pin', snapshot.id, false)"
                 >
-                  <path
-                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                  />
-                </svg>
-              </SButton>
-              <SButton
-                variant="ghost"
-                size="sm"
-                class="text-danger hover:text-danger"
-                @click="emit('delete', snapshot.id)"
+                  <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M16 2l-4 4-6-2-2 10 4.5 4.5L2 25l6.5-6.5L13 23l10-2-2-6 4-4-9-9z" />
+                  </svg>
+                </button>
+                <span class="font-medium text-text-primary">{{ snapshot.name }}</span>
+              </div>
+              <p
+                v-if="snapshot.note"
+                class="mt-0.5 max-w-[200px] truncate text-xs text-text-tertiary"
               >
-                Delete
-              </SButton>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+                {{ snapshot.note }}
+              </p>
+            </td>
+            <!-- Tags -->
+            <td class="px-3 py-3">
+              <div class="flex flex-wrap gap-1">
+                <span
+                  v-for="tag in snapshot.tags"
+                  :key="tag"
+                  class="inline-flex items-center gap-0.5 rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-medium text-accent"
+                >
+                  {{ tag }}
+                  <button
+                    class="ml-0.5 text-accent/50 hover:text-accent"
+                    @click.stop="emit('removeTag', snapshot.id, tag)"
+                  >
+                    &times;
+                  </button>
+                </span>
+                <button
+                  class="rounded-full border border-dashed border-border-subtle px-1.5 py-0.5 text-[10px] text-text-tertiary transition-colors hover:border-accent hover:text-accent"
+                  @click="emit('addTag', snapshot.id)"
+                >
+                  + tag
+                </button>
+              </div>
+            </td>
+            <td class="px-3 py-3 text-text-secondary">
+              {{ getProfileName(snapshot.profileId) }}
+            </td>
+            <td class="px-3 py-3 whitespace-nowrap text-text-secondary">
+              {{ formatDate(snapshot.createdAt) }}
+            </td>
+            <td class="px-3 py-3 text-right font-mono whitespace-nowrap text-text-secondary">
+              {{ formatSize(snapshot.sizeBytes) }}
+            </td>
+            <!-- Version info -->
+            <td class="px-3 py-3">
+              <span v-if="snapshot.dumpToolVersion" class="font-mono text-xs text-text-tertiary">
+                v{{ snapshot.dumpToolVersion }}
+              </span>
+              <span v-else class="text-xs text-text-tertiary">&mdash;</span>
+            </td>
+            <!-- Status (integrity + pinned) -->
+            <td class="px-3 py-3 text-center">
+              <div class="flex items-center justify-center gap-1">
+                <button
+                  v-if="snapshot.checksum"
+                  class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-success/80 transition-colors hover:bg-success/10 hover:text-success"
+                  title="SHA-256 checksum recorded — click to verify"
+                  @click="emit('verify', snapshot.id)"
+                >
+                  <svg
+                    class="h-3.5 w-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  </svg>
+                </button>
+                <span
+                  v-else
+                  class="text-xs text-text-tertiary"
+                  title="No checksum — created before integrity tracking"
+                  >&mdash;</span
+                >
+              </div>
+            </td>
+            <td class="px-3 py-3 text-right">
+              <div class="flex items-center justify-end gap-1">
+                <SButton
+                  variant="ghost"
+                  size="sm"
+                  title="Preview restore impact"
+                  @click="emit('preview', snapshot.id)"
+                >
+                  Preview
+                </SButton>
+                <SButton variant="ghost" size="sm" @click="emit('restore', snapshot.id)">
+                  Restore
+                </SButton>
+                <SButton
+                  variant="ghost"
+                  size="sm"
+                  title="Export as SQL file"
+                  @click="emit('export', snapshot.id)"
+                >
+                  <svg
+                    class="h-3.5 w-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                </SButton>
+                <SButton
+                  variant="ghost"
+                  size="sm"
+                  :title="
+                    snapshot.pinned ? 'Unpin snapshot' : 'Pin snapshot (protect from auto-cleanup)'
+                  "
+                  @click="emit('pin', snapshot.id, !snapshot.pinned)"
+                >
+                  <svg
+                    class="h-3.5 w-3.5"
+                    :class="snapshot.pinned ? 'text-accent' : ''"
+                    viewBox="0 0 24 24"
+                    :fill="snapshot.pinned ? 'currentColor' : 'none'"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <line x1="12" y1="17" x2="12" y2="22" />
+                    <path
+                      d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"
+                    />
+                  </svg>
+                </SButton>
+                <SButton
+                  variant="ghost"
+                  size="sm"
+                  @click="emit('reveal', snapshot)"
+                  title="Show in Finder"
+                >
+                  <svg
+                    class="h-3.5 w-3.5"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path
+                      d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                    />
+                  </svg>
+                </SButton>
+                <SButton
+                  variant="ghost"
+                  size="sm"
+                  class="text-danger hover:text-danger"
+                  @click="emit('delete', snapshot.id)"
+                >
+                  Delete
+                </SButton>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 </template>
 

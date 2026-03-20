@@ -73,12 +73,15 @@ export interface Snapshot {
   checksum: string | null;
   createdAt: string;
   restoredAt: string | null;
+  pinned: boolean;
+  tags: string[];
 }
 
 export interface SnapshotCreatePayload {
   profileId: string;
   name: string;
   note?: string;
+  tags?: string[];
 }
 
 export interface RestoreRecord {
@@ -130,10 +133,87 @@ export interface IntegrityResult {
   message: string;
 }
 
+export interface SizeEstimation {
+  estimatedRawBytes: number;
+  estimatedCompressedBytes: number;
+  compressionRatio: number;
+  estimationMethod: string;
+}
+
+export interface DiscoveredTool {
+  name: string;
+  path: string | null;
+  version: string | null;
+  found: boolean;
+  installHint: string;
+  minVersion: string;
+}
+
+export interface RetentionPolicy {
+  profileId: string;
+  maxCount: number | null;
+  maxAgeDays: number | null;
+  maxSizeBytes: number | null;
+}
+
+export interface RetentionEnforcementResult {
+  deletedCount: number;
+  freedBytes: number;
+  reasons: string[];
+}
+
+export interface SchemaDiff {
+  snapshotAName: string;
+  snapshotBName: string;
+  tablesAdded: string[];
+  tablesRemoved: string[];
+  tablesModified: TableDiff[];
+  summary: string;
+}
+
+export interface TableDiff {
+  tableName: string;
+  columnsAdded: string[];
+  columnsRemoved: string[];
+  columnsModified: string[];
+}
+
+export interface RestorePreview {
+  snapshotName: string;
+  snapshotTables: string[];
+  currentTables: string[];
+  tablesToAdd: string[];
+  tablesToRemove: string[];
+  tablesInCommon: string[];
+  warnings: string[];
+}
+
+export interface VersionCompatibility {
+  compatible: boolean;
+  snapshotToolVersion: string | null;
+  snapshotDbVersion: string | null;
+  currentToolVersion: string | null;
+  warnings: string[];
+}
+
+export interface ExportResult {
+  outputPath: string;
+  sizeBytes: number;
+}
+
 export type SnapshotProgress =
   | { event: "started"; data: { operation: string; profileName: string } }
   | { event: "phase"; data: { phase: string; message: string } }
   | { event: "progress"; data: { percentage: number; bytesProcessed: number } }
+  | {
+      event: "tableProgress";
+      data: {
+        currentTable: string;
+        tablesCompleted: number;
+        totalTables: number;
+        bytesProcessed: number;
+      };
+    }
   | {
       event: "completed";
       data: { message: string; sizeBytes: number | null; durationSecs: number };

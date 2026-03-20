@@ -4,6 +4,7 @@ use crate::error::DsmError;
 use crate::progress::SnapshotProgress;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tauri::ipc::Channel;
 use tauri::State;
 
@@ -85,6 +86,8 @@ pub struct Snapshot {
     pub checksum: Option<String>,
     pub created_at: String,
     pub restored_at: Option<String>,
+    pub pinned: bool,
+    pub tags: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -487,6 +490,20 @@ pub async fn profile_test_connection(
     }
 }
 
+/// Format bytes as a short human-readable string.
+#[allow(clippy::cast_precision_loss)]
+fn format_bytes_short(bytes: u64) -> String {
+    if bytes < 1024 {
+        format!("{bytes} B")
+    } else if bytes < 1024 * 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else if bytes < 1024 * 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{:.2} GB", bytes as f64 / (1024.0 * 1024.0 * 1024.0))
+    }
+}
+
 /// Default port for a given database type.
 fn default_port_for(db_type: &str) -> u16 {
     match db_type {
@@ -595,7 +612,7 @@ fn test_sqlite(database_path: &str) -> Result<String, DsmError> {
 
 // -- Snapshot Commands --------------------------------------------------------
 
-/// Map a `rusqlite` row to a `Snapshot` struct.
+/// Map a `rusqlite` row to a `Snapshot` struct (tags populated separately).
 #[allow(clippy::cast_sign_loss)]
 fn row_to_snapshot(row: &rusqlite::Row) -> Result<Snapshot, rusqlite::Error> {
     Ok(Snapshot {
@@ -610,7 +627,44 @@ fn row_to_snapshot(row: &rusqlite::Row) -> Result<Snapshot, rusqlite::Error> {
         checksum: row.get("checksum")?,
         created_at: row.get("created_at")?,
         restored_at: row.get("restored_at")?,
+        pinned: row.get::<_, i32>("pinned").unwrap_or(0) != 0,
+        tags: Vec::new(), // Populated by load_tags_for_snapshots
     })
+}
+
+/// Load tags for a batch of snapshots from the database.
+fn load_tags_for_snapshots(
+    conn: &rusqlite::Connection,
+    snapshots: &mut [Snapshot],
+) -> Result<(), rusqlite::Error> {
+    if snapshots.is_empty() {
+        return Ok(());
+    }
+    let ids: Vec<&str> = snapshots.iter().map(|s| s.id.as_str()).collect();
+    let placeholders: Vec<String> = (1..=ids.len()).map(|i| format!("?{i}")).collect();
+    let sql = format!(
+        "SELECT snapshot_id, tag FROM snapshot_tags WHERE snapshot_id IN ({}) ORDER BY tag",
+        placeholders.join(", ")
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::types::ToSql)
+        .collect();
+    let rows = stmt.query_map(param_refs.as_slice(), |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    let mut tag_map: HashMap<String, Vec<String>> = HashMap::new();
+    for row in rows {
+        let (snapshot_id, tag) = row?;
+        tag_map.entry(snapshot_id).or_default().push(tag);
+    }
+    for snapshot in snapshots.iter_mut() {
+        if let Some(tags) = tag_map.remove(&snapshot.id) {
+            snapshot.tags = tags;
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -621,6 +675,7 @@ pub async fn snapshot_create(
     profile_id: String,
     name: String,
     note: Option<String>,
+    tags: Option<Vec<String>>,
     on_progress: Channel<SnapshotProgress>,
 ) -> Result<Snapshot, DsmError> {
     let start = std::time::Instant::now();
@@ -701,6 +756,9 @@ pub async fn snapshot_create(
         message: format!("Dumping {}...", profile.database_name),
     });
 
+    // Capture tool and database versions for compatibility tracking
+    let dump_tool_version = detect_tool_version(&profile.db_type).await;
+
     // Build and run the dump command
     let size_bytes = match profile.db_type.as_str() {
         "mysql" => {
@@ -732,11 +790,37 @@ pub async fn snapshot_create(
                 });
             }
 
-            // Compress captured stdout to .sql.gz
+            // Compress captured stdout to .sql.gz with streaming progress
             let stdout_data = child_output.stdout;
             let out = output_path.clone();
+            let progress_channel = on_progress.clone();
             let compressed_size = tokio::task::spawn_blocking(move || {
-                crate::compress::compress_from_reader(std::io::Cursor::new(stdout_data), &out)
+                crate::compress::compress_from_reader_with_progress(
+                    std::io::Cursor::new(stdout_data),
+                    &out,
+                    |bytes, table| {
+                        let msg = if let Some(t) = table {
+                            format!(
+                                "Compressing... table: {t} ({} processed)",
+                                format_bytes_short(bytes)
+                            )
+                        } else {
+                            format!("Compressing... ({} processed)", format_bytes_short(bytes))
+                        };
+                        let _ = progress_channel.send(SnapshotProgress::Phase {
+                            phase: "compressing".to_string(),
+                            message: msg,
+                        });
+                        if let Some(t) = table {
+                            let _ = progress_channel.send(SnapshotProgress::TableProgress {
+                                current_table: t.to_string(),
+                                tables_completed: 0,
+                                total_tables: 0,
+                                bytes_processed: bytes,
+                            });
+                        }
+                    },
+                )
             })
             .await
             .map_err(|e| DsmError::DumpError {
@@ -777,8 +861,26 @@ pub async fn snapshot_create(
 
             let stdout_data = child_output.stdout;
             let out = output_path.clone();
+            let progress_channel = on_progress.clone();
             let compressed_size = tokio::task::spawn_blocking(move || {
-                crate::compress::compress_from_reader(std::io::Cursor::new(stdout_data), &out)
+                crate::compress::compress_from_reader_with_progress(
+                    std::io::Cursor::new(stdout_data),
+                    &out,
+                    |bytes, table| {
+                        let msg = if let Some(t) = table {
+                            format!(
+                                "Compressing... table: {t} ({} processed)",
+                                format_bytes_short(bytes)
+                            )
+                        } else {
+                            format!("Compressing... ({} processed)", format_bytes_short(bytes))
+                        };
+                        let _ = progress_channel.send(SnapshotProgress::Phase {
+                            phase: "compressing".to_string(),
+                            message: msg,
+                        });
+                    },
+                )
             })
             .await
             .map_err(|e| DsmError::DumpError {
@@ -868,11 +970,12 @@ pub async fn snapshot_create(
     });
 
     let now = chrono::Utc::now().to_rfc3339();
+    let snapshot_tags = tags.unwrap_or_default();
     {
         let conn = lock_db(&db)?;
         conn.execute(
-            "INSERT INTO snapshots (id, profile_id, name, note, file_path, size_bytes, checksum, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO snapshots (id, profile_id, name, note, file_path, size_bytes, db_version, dump_tool_version, checksum, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 snapshot_id,
                 profile_id,
@@ -880,10 +983,20 @@ pub async fn snapshot_create(
                 note,
                 relative_path,
                 size_bytes.cast_signed(),
+                dump_tool_version.as_ref().map(|v| v.1.as_str()),
+                dump_tool_version.as_ref().map(|v| v.0.as_str()),
                 checksum,
                 now,
             ],
         )?;
+
+        // Insert tags
+        for tag in &snapshot_tags {
+            conn.execute(
+                "INSERT OR IGNORE INTO snapshot_tags (snapshot_id, tag) VALUES (?1, ?2)",
+                params![snapshot_id, tag],
+            )?;
+        }
     }
 
     let duration_secs = start.elapsed().as_secs_f64();
@@ -900,11 +1013,13 @@ pub async fn snapshot_create(
         note,
         file_path: relative_path,
         size_bytes,
-        db_version: None,
-        dump_tool_version: None,
+        db_version: dump_tool_version.as_ref().map(|v| v.1.clone()),
+        dump_tool_version: dump_tool_version.map(|v| v.0),
         checksum: Some(checksum),
         created_at: now,
         restored_at: None,
+        pinned: false,
+        tags: snapshot_tags,
     })
 }
 
@@ -915,7 +1030,7 @@ pub async fn snapshot_list(
 ) -> Result<Vec<Snapshot>, DsmError> {
     let conn = lock_db(&db)?;
 
-    let snapshots = if let Some(pid) = profile_id {
+    let mut snapshots = if let Some(pid) = profile_id {
         let mut stmt =
             conn.prepare("SELECT * FROM snapshots WHERE profile_id = ?1 ORDER BY created_at DESC")?;
         let rows = stmt
@@ -929,6 +1044,8 @@ pub async fn snapshot_list(
             .collect::<Result<Vec<_>, _>>()?;
         rows
     };
+
+    load_tags_for_snapshots(&conn, &mut snapshots)?;
 
     Ok(snapshots)
 }
@@ -1669,6 +1786,1118 @@ pub async fn settings_set(
         params![key, value],
     )?;
     Ok(())
+}
+
+// -- Tagging Commands ---------------------------------------------------------
+
+#[tauri::command]
+pub async fn snapshot_add_tags(
+    db: State<'_, DbState>,
+    snapshot_id: String,
+    tags: Vec<String>,
+) -> Result<Vec<String>, DsmError> {
+    let conn = lock_db(&db)?;
+    for tag in &tags {
+        let normalised = tag.trim().to_lowercase();
+        if !normalised.is_empty() {
+            conn.execute(
+                "INSERT OR IGNORE INTO snapshot_tags (snapshot_id, tag) VALUES (?1, ?2)",
+                params![snapshot_id, normalised],
+            )?;
+        }
+    }
+    // Return all tags for this snapshot
+    let mut stmt =
+        conn.prepare("SELECT tag FROM snapshot_tags WHERE snapshot_id = ?1 ORDER BY tag")?;
+    let result = stmt
+        .query_map(params![snapshot_id], |row| row.get(0))?
+        .collect::<Result<Vec<String>, _>>()?;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn snapshot_remove_tag(
+    db: State<'_, DbState>,
+    snapshot_id: String,
+    tag: String,
+) -> Result<Vec<String>, DsmError> {
+    let conn = lock_db(&db)?;
+    conn.execute(
+        "DELETE FROM snapshot_tags WHERE snapshot_id = ?1 AND tag = ?2",
+        params![snapshot_id, tag],
+    )?;
+    let mut stmt =
+        conn.prepare("SELECT tag FROM snapshot_tags WHERE snapshot_id = ?1 ORDER BY tag")?;
+    let result = stmt
+        .query_map(params![snapshot_id], |row| row.get(0))?
+        .collect::<Result<Vec<String>, _>>()?;
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn snapshot_list_all_tags(db: State<'_, DbState>) -> Result<Vec<String>, DsmError> {
+    let conn = lock_db(&db)?;
+    let mut stmt = conn.prepare("SELECT DISTINCT tag FROM snapshot_tags ORDER BY tag")?;
+    let result = stmt
+        .query_map([], |row| row.get(0))?
+        .collect::<Result<Vec<String>, _>>()?;
+    Ok(result)
+}
+
+// -- Pinning Commands ---------------------------------------------------------
+
+#[tauri::command]
+pub async fn snapshot_set_pinned(
+    db: State<'_, DbState>,
+    snapshot_id: String,
+    pinned: bool,
+) -> Result<(), DsmError> {
+    let conn = lock_db(&db)?;
+    conn.execute(
+        "UPDATE snapshots SET pinned = ?1 WHERE id = ?2",
+        params![i32::from(pinned), snapshot_id],
+    )?;
+    Ok(())
+}
+
+// -- Size Estimation Command --------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SizeEstimation {
+    pub estimated_raw_bytes: u64,
+    pub estimated_compressed_bytes: u64,
+    pub compression_ratio: f64,
+    pub estimation_method: String,
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_lines, clippy::cast_precision_loss)]
+pub async fn snapshot_estimate_size(
+    db: State<'_, DbState>,
+    paths: State<'_, AppPaths>,
+    profile_id: String,
+) -> Result<SizeEstimation, DsmError> {
+    // Load profile
+    let profile = {
+        let conn = lock_db(&db)?;
+        conn.query_row(
+            "SELECT * FROM profiles WHERE id = ?1",
+            params![profile_id],
+            row_to_profile,
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => DsmError::ProfileNotFound(profile_id.clone()),
+            other => DsmError::DatabaseError(other),
+        })?
+    };
+
+    let creds = credentials::get_credentials(&profile_id)?;
+
+    // Get the raw database size
+    let raw_bytes = match profile.db_type.as_str() {
+        "mysql" => {
+            let df = crate::dump::write_mysql_defaults_file(
+                &paths.tmp_dir,
+                profile.host.as_deref().unwrap_or("127.0.0.1"),
+                profile.port.unwrap_or(3306),
+                profile.username.as_deref().unwrap_or("root"),
+                creds.password.as_deref().unwrap_or(""),
+            )?;
+            let output = tokio::process::Command::new("mysql")
+                .arg(format!("--defaults-extra-file={}", df.display()))
+                .arg(&profile.database_name)
+                .arg("-e")
+                .arg("SELECT SUM(data_length + index_length) FROM information_schema.TABLES WHERE table_schema = DATABASE()")
+                .arg("--skip-column-names")
+                .output()
+                .await
+                .map_err(|e| DsmError::ConnectionError {
+                    message: format!("Failed to estimate size: {e}"),
+                })?;
+            let _ = std::fs::remove_file(&df);
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                stdout.parse::<u64>().unwrap_or(0)
+            } else {
+                0
+            }
+        }
+        "postgresql" => {
+            let output = tokio::process::Command::new("psql")
+                .env("PGPASSWORD", creds.password.as_deref().unwrap_or(""))
+                .arg("--host")
+                .arg(profile.host.as_deref().unwrap_or("127.0.0.1"))
+                .arg("--port")
+                .arg(profile.port.unwrap_or(5432).to_string())
+                .arg("--username")
+                .arg(profile.username.as_deref().unwrap_or("postgres"))
+                .arg(&profile.database_name)
+                .arg("-t")
+                .arg("-c")
+                .arg("SELECT pg_database_size(current_database())")
+                .output()
+                .await
+                .map_err(|e| DsmError::ConnectionError {
+                    message: format!("Failed to estimate size: {e}"),
+                })?;
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                stdout.parse::<u64>().unwrap_or(0)
+            } else {
+                0
+            }
+        }
+        "sqlite" => {
+            let path = std::path::Path::new(&profile.database_name);
+            if path.exists() {
+                std::fs::metadata(path).map(|m| m.len()).unwrap_or(0)
+            } else {
+                0
+            }
+        }
+        _ => 0,
+    };
+
+    // Look up historical compression ratio from previous snapshots of this profile
+    let historical_ratio = {
+        let conn = lock_db(&db)?;
+        let result: Option<f64> = conn
+            .query_row(
+                "SELECT AVG(CAST(size_bytes AS REAL) / NULLIF(
+                    (SELECT SUM(data_length) FROM (SELECT 1 as data_length)), 0))
+                 FROM snapshots WHERE profile_id = ?1 AND size_bytes > 0",
+                params![profile_id],
+                |row| row.get(0),
+            )
+            .ok()
+            .flatten();
+        result
+    };
+
+    // Default compression ratio: SQL text typically compresses ~5:1 with gzip
+    let compression_ratio = historical_ratio.unwrap_or(0.2);
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    let estimated_compressed = (raw_bytes as f64 * compression_ratio) as u64;
+
+    let estimation_method = if historical_ratio.is_some() {
+        "historical".to_string()
+    } else {
+        "default".to_string()
+    };
+
+    Ok(SizeEstimation {
+        estimated_raw_bytes: raw_bytes,
+        estimated_compressed_bytes: if estimated_compressed > 0 {
+            estimated_compressed
+        } else {
+            raw_bytes / 5
+        },
+        compression_ratio,
+        estimation_method,
+    })
+}
+
+// -- Tool Discovery Commands --------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscoveredTool {
+    pub name: String,
+    pub path: Option<String>,
+    pub version: Option<String>,
+    pub found: bool,
+    pub install_hint: String,
+    pub min_version: String,
+}
+
+#[tauri::command]
+pub async fn discover_tools() -> Result<Vec<DiscoveredTool>, DsmError> {
+    let tools = vec![
+        ("mysqldump", "brew install mysql-client", "8.0"),
+        ("mysql", "brew install mysql-client", "8.0"),
+        ("pg_dump", "brew install libpq", "14"),
+        ("psql", "brew install libpq", "14"),
+        ("sqlite3", "Bundled with macOS", "3.0"),
+    ];
+
+    let mut results = Vec::new();
+    for (tool_name, install_hint, min_version) in tools {
+        let tool_result = discover_single_tool(tool_name, install_hint, min_version).await;
+        results.push(tool_result);
+    }
+    Ok(results)
+}
+
+async fn discover_single_tool(name: &str, install_hint: &str, min_version: &str) -> DiscoveredTool {
+    match which::which(name) {
+        Ok(path) => {
+            let version = get_tool_version(name, &path).await;
+            DiscoveredTool {
+                name: name.to_string(),
+                path: Some(path.to_string_lossy().to_string()),
+                version,
+                found: true,
+                install_hint: install_hint.to_string(),
+                min_version: min_version.to_string(),
+            }
+        }
+        Err(_) => DiscoveredTool {
+            name: name.to_string(),
+            path: None,
+            version: None,
+            found: false,
+            install_hint: install_hint.to_string(),
+            min_version: min_version.to_string(),
+        },
+    }
+}
+
+async fn get_tool_version(name: &str, path: &std::path::Path) -> Option<String> {
+    let version_flag = match name {
+        "mysqldump" | "mysql" | "pg_dump" | "psql" => "--version",
+        "sqlite3" => "-version",
+        _ => return None,
+    };
+    let output = tokio::process::Command::new(path)
+        .arg(version_flag)
+        .output()
+        .await
+        .ok()?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        // Extract just the version number
+        extract_version_number(&stdout)
+    } else {
+        None
+    }
+}
+
+fn extract_version_number(output: &str) -> Option<String> {
+    // Common patterns: "mysqldump  Ver 8.0.33", "pg_dump (PostgreSQL) 14.9", "3.39.5 2022-..."
+    for word in output.split_whitespace() {
+        if word.chars().next().is_some_and(|c| c.is_ascii_digit()) && word.contains('.') {
+            // Trim trailing commas or parentheses
+            let clean = word.trim_end_matches(|c: char| !c.is_ascii_digit() && c != '.');
+            return Some(clean.to_string());
+        }
+    }
+    None
+}
+
+/// Detect dump tool version for the current database type.
+/// Returns `(tool_version, db_version_from_tool)` or `None`.
+async fn detect_tool_version(db_type: &str) -> Option<(String, String)> {
+    let (tool_name, version_flag) = match db_type {
+        "mysql" => ("mysqldump", "--version"),
+        "postgresql" => ("pg_dump", "--version"),
+        "sqlite" => ("sqlite3", "-version"),
+        _ => return None,
+    };
+
+    let path = which::which(tool_name).ok()?;
+    let output = tokio::process::Command::new(&path)
+        .arg(version_flag)
+        .output()
+        .await
+        .ok()?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let version = extract_version_number(&stdout).unwrap_or_else(|| stdout.clone());
+        Some((version.clone(), version))
+    } else {
+        None
+    }
+}
+
+#[tauri::command]
+pub async fn save_tool_path(
+    db: State<'_, DbState>,
+    tool_name: String,
+    path: String,
+) -> Result<(), DsmError> {
+    let version = get_tool_version(&tool_name, std::path::Path::new(&path)).await;
+    let now = chrono::Utc::now().to_rfc3339();
+    let conn = lock_db(&db)?;
+    conn.execute(
+        "INSERT OR REPLACE INTO tool_paths (tool_name, path, version, discovered_at) VALUES (?1, ?2, ?3, ?4)",
+        params![tool_name, path, version, now],
+    )?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_setup_complete(db: State<'_, DbState>) -> Result<bool, DsmError> {
+    let conn = lock_db(&db)?;
+    let result: String = conn
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'setup_complete'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap_or_else(|_| "false".to_string());
+    Ok(result == "true")
+}
+
+// -- Retention Policy Commands ------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetentionPolicy {
+    pub profile_id: String,
+    pub max_count: Option<u32>,
+    pub max_age_days: Option<u32>,
+    pub max_size_bytes: Option<u64>,
+}
+
+#[tauri::command]
+#[allow(clippy::cast_sign_loss)]
+pub async fn retention_policy_get(
+    db: State<'_, DbState>,
+    profile_id: String,
+) -> Result<Option<RetentionPolicy>, DsmError> {
+    let conn = lock_db(&db)?;
+    let result = conn.query_row(
+        "SELECT profile_id, max_count, max_age_days, max_size_bytes FROM retention_policies WHERE profile_id = ?1",
+        params![profile_id],
+        |row| {
+            Ok(RetentionPolicy {
+                profile_id: row.get(0)?,
+                max_count: row.get::<_, Option<i32>>(1)?.map(|v| v as u32),
+                max_age_days: row.get::<_, Option<i32>>(2)?.map(|v| v as u32),
+                max_size_bytes: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+            })
+        },
+    );
+    match result {
+        Ok(policy) => Ok(Some(policy)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(DsmError::DatabaseError(e)),
+    }
+}
+
+#[tauri::command]
+#[allow(clippy::cast_possible_wrap)]
+pub async fn retention_policy_set(
+    db: State<'_, DbState>,
+    policy: RetentionPolicy,
+) -> Result<(), DsmError> {
+    let conn = lock_db(&db)?;
+    conn.execute(
+        "INSERT OR REPLACE INTO retention_policies (profile_id, max_count, max_age_days, max_size_bytes)
+         VALUES (?1, ?2, ?3, ?4)",
+        params![
+            policy.profile_id,
+            policy.max_count.map(|v| v as i32),
+            policy.max_age_days.map(|v| v as i32),
+            policy.max_size_bytes.map(|v| v as i64),
+        ],
+    )?;
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RetentionEnforcementResult {
+    pub deleted_count: u32,
+    pub freed_bytes: u64,
+    pub reasons: Vec<String>,
+}
+
+#[tauri::command]
+#[allow(
+    clippy::cast_possible_wrap,
+    clippy::cast_sign_loss,
+    clippy::too_many_lines
+)]
+pub async fn retention_enforce(
+    db: State<'_, DbState>,
+    paths: State<'_, AppPaths>,
+    profile_id: String,
+) -> Result<RetentionEnforcementResult, DsmError> {
+    let policy = {
+        let conn = lock_db(&db)?;
+        conn.query_row(
+            "SELECT profile_id, max_count, max_age_days, max_size_bytes FROM retention_policies WHERE profile_id = ?1",
+            params![profile_id],
+            |row| {
+                Ok(RetentionPolicy {
+                    profile_id: row.get(0)?,
+                    max_count: row.get::<_, Option<i32>>(1)?.map(|v| v as u32),
+                    max_age_days: row.get::<_, Option<i32>>(2)?.map(|v| v as u32),
+                    max_size_bytes: row.get::<_, Option<i64>>(3)?.map(|v| v as u64),
+                })
+            },
+        )
+    };
+
+    let policy = match policy {
+        Ok(p) => p,
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            return Ok(RetentionEnforcementResult {
+                deleted_count: 0,
+                freed_bytes: 0,
+                reasons: vec![],
+            });
+        }
+        Err(e) => return Err(DsmError::DatabaseError(e)),
+    };
+
+    let mut to_delete: Vec<(String, String, u64)> = Vec::new(); // (id, file_path, size_bytes)
+    let mut reasons: Vec<String> = Vec::new();
+
+    let conn = lock_db(&db)?;
+
+    // Get all unpinned snapshots for this profile, ordered by creation date (oldest first)
+    let mut stmt = conn.prepare(
+        "SELECT id, file_path, size_bytes, created_at FROM snapshots
+         WHERE profile_id = ?1 AND pinned = 0
+         ORDER BY created_at ASC",
+    )?;
+    let rows: Vec<(String, String, i64, String)> = stmt
+        .query_map(params![profile_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut to_keep: Vec<&(String, String, i64, String)> = rows.iter().collect();
+
+    // Enforce max_count: keep only the newest N
+    if let Some(max_count) = policy.max_count {
+        let max = max_count as usize;
+        if to_keep.len() > max {
+            let excess = to_keep.len() - max;
+            for row in to_keep.iter().take(excess) {
+                to_delete.push((row.0.clone(), row.1.clone(), row.2 as u64));
+            }
+            reasons.push(format!(
+                "Removed {excess} snapshot(s) exceeding max count of {max_count}"
+            ));
+            to_keep = to_keep[excess..].to_vec();
+        }
+    }
+
+    // Enforce max_age_days
+    if let Some(max_age) = policy.max_age_days {
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(i64::from(max_age));
+        let cutoff_str = cutoff.to_rfc3339();
+        let mut aged_count = 0u32;
+        to_keep.retain(|row| {
+            if row.3 < cutoff_str {
+                to_delete.push((row.0.clone(), row.1.clone(), row.2 as u64));
+                aged_count += 1;
+                false
+            } else {
+                true
+            }
+        });
+        if aged_count > 0 {
+            reasons.push(format!(
+                "Removed {aged_count} snapshot(s) older than {max_age} days"
+            ));
+        }
+    }
+
+    // Enforce max_size_bytes: delete oldest until total size is under limit
+    if let Some(max_size) = policy.max_size_bytes {
+        let mut total: u64 = to_keep.iter().map(|r| r.2 as u64).sum();
+        let mut size_count = 0u32;
+        while total > max_size && !to_keep.is_empty() {
+            let oldest = to_keep.remove(0);
+            total -= oldest.2 as u64;
+            to_delete.push((oldest.0.clone(), oldest.1.clone(), oldest.2 as u64));
+            size_count += 1;
+        }
+        if size_count > 0 {
+            reasons.push(format!(
+                "Removed {size_count} snapshot(s) to stay under size limit"
+            ));
+        }
+    }
+
+    // Deduplicate to_delete by id
+    to_delete.sort_by(|a, b| a.0.cmp(&b.0));
+    to_delete.dedup_by(|a, b| a.0 == b.0);
+
+    #[allow(clippy::cast_possible_truncation)]
+    let deleted_count = to_delete.len() as u32;
+    let freed_bytes: u64 = to_delete.iter().map(|d| d.2).sum();
+
+    // Delete snapshot files and records
+    for (id, file_path, _) in &to_delete {
+        let full_path = paths.snapshots_dir.join(file_path);
+        if full_path.exists() {
+            let _ = std::fs::remove_file(&full_path);
+        }
+        conn.execute("DELETE FROM snapshots WHERE id = ?1", params![id])?;
+    }
+
+    Ok(RetentionEnforcementResult {
+        deleted_count,
+        freed_bytes,
+        reasons,
+    })
+}
+
+// -- Schema Diff Commands -----------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SchemaDiff {
+    pub snapshot_a_name: String,
+    pub snapshot_b_name: String,
+    pub tables_added: Vec<String>,
+    pub tables_removed: Vec<String>,
+    pub tables_modified: Vec<TableDiff>,
+    pub summary: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TableDiff {
+    pub table_name: String,
+    pub columns_added: Vec<String>,
+    pub columns_removed: Vec<String>,
+    pub columns_modified: Vec<String>,
+}
+
+#[tauri::command]
+#[allow(clippy::similar_names)]
+pub async fn snapshot_compare_schema(
+    db: State<'_, DbState>,
+    paths: State<'_, AppPaths>,
+    snapshot_a_id: String,
+    snapshot_b_id: String,
+) -> Result<SchemaDiff, DsmError> {
+    let (snap_a, snap_b) = {
+        let conn = lock_db(&db)?;
+        let a = conn
+            .query_row(
+                "SELECT * FROM snapshots WHERE id = ?1",
+                params![snapshot_a_id],
+                row_to_snapshot,
+            )
+            .map_err(|_| DsmError::SnapshotNotFound(snapshot_a_id.clone()))?;
+        let b = conn
+            .query_row(
+                "SELECT * FROM snapshots WHERE id = ?1",
+                params![snapshot_b_id],
+                row_to_snapshot,
+            )
+            .map_err(|_| DsmError::SnapshotNotFound(snapshot_b_id.clone()))?;
+        (a, b)
+    };
+
+    // Extract schema from both snapshots by decompressing and parsing CREATE TABLE statements
+    let schema_a =
+        extract_schema_from_snapshot(&paths.snapshots_dir.join(&snap_a.file_path), &paths.tmp_dir)
+            .await?;
+    let schema_b =
+        extract_schema_from_snapshot(&paths.snapshots_dir.join(&snap_b.file_path), &paths.tmp_dir)
+            .await?;
+
+    let tables_a: std::collections::HashSet<&str> = schema_a.keys().map(String::as_str).collect();
+    let tables_b: std::collections::HashSet<&str> = schema_b.keys().map(String::as_str).collect();
+
+    let tables_added: Vec<String> = tables_b
+        .difference(&tables_a)
+        .map(|s| (*s).to_string())
+        .collect();
+    let tables_removed: Vec<String> = tables_a
+        .difference(&tables_b)
+        .map(|s| (*s).to_string())
+        .collect();
+
+    let mut tables_modified = Vec::new();
+    for table in tables_a.intersection(&tables_b) {
+        let cols_a = &schema_a[*table];
+        let cols_b = &schema_b[*table];
+        let set_a: std::collections::HashSet<&str> = cols_a.iter().map(String::as_str).collect();
+        let set_b: std::collections::HashSet<&str> = cols_b.iter().map(String::as_str).collect();
+
+        let added: Vec<String> = set_b.difference(&set_a).map(|s| (*s).to_string()).collect();
+        let removed: Vec<String> = set_a.difference(&set_b).map(|s| (*s).to_string()).collect();
+
+        if !added.is_empty() || !removed.is_empty() {
+            tables_modified.push(TableDiff {
+                table_name: (*table).to_string(),
+                columns_added: added,
+                columns_removed: removed,
+                columns_modified: Vec::new(),
+            });
+        }
+    }
+
+    let summary = format!(
+        "{} table(s) added, {} removed, {} modified",
+        tables_added.len(),
+        tables_removed.len(),
+        tables_modified.len()
+    );
+
+    Ok(SchemaDiff {
+        snapshot_a_name: snap_a.name,
+        snapshot_b_name: snap_b.name,
+        tables_added,
+        tables_removed,
+        tables_modified,
+        summary,
+    })
+}
+
+/// Extract table-to-columns map from a compressed SQL snapshot by parsing CREATE TABLE statements.
+async fn extract_schema_from_snapshot(
+    gz_path: &std::path::Path,
+    tmp_dir: &std::path::Path,
+) -> Result<HashMap<String, Vec<String>>, DsmError> {
+    let gz = gz_path.to_path_buf();
+    let tmp = tmp_dir.to_path_buf();
+
+    tokio::task::spawn_blocking(move || {
+        let mut sql_content = Vec::new();
+        crate::compress::decompress_to_writer(&gz, &mut sql_content)?;
+        let sql_text = String::from_utf8_lossy(&sql_content);
+
+        let mut tables: HashMap<String, Vec<String>> = HashMap::new();
+        let mut current_table: Option<String> = None;
+        let mut current_columns: Vec<String> = Vec::new();
+
+        for line in sql_text.lines() {
+            let trimmed = line.trim();
+            // Match CREATE TABLE patterns
+            if let Some(name) = parse_create_table_line(trimmed) {
+                current_table = Some(name);
+                current_columns = Vec::new();
+            } else if current_table.is_some() {
+                if trimmed.starts_with(')') {
+                    // End of CREATE TABLE
+                    if let Some(table_name) = current_table.take() {
+                        tables.insert(table_name, current_columns.clone());
+                    }
+                    current_columns.clear();
+                } else if trimmed.starts_with('`')
+                    || trimmed.starts_with('"')
+                    || trimmed
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_alphabetic())
+                {
+                    // Column definition line
+                    let col = trimmed.trim_end_matches(',').to_string();
+                    if !col.to_uppercase().starts_with("PRIMARY KEY")
+                        && !col.to_uppercase().starts_with("KEY ")
+                        && !col.to_uppercase().starts_with("INDEX ")
+                        && !col.to_uppercase().starts_with("UNIQUE ")
+                        && !col.to_uppercase().starts_with("CONSTRAINT ")
+                        && !col.to_uppercase().starts_with("FOREIGN KEY")
+                    {
+                        current_columns.push(col);
+                    }
+                }
+            }
+        }
+
+        // Suppress unused variable warning
+        let _ = tmp;
+
+        Ok(tables)
+    })
+    .await
+    .map_err(|e| {
+        DsmError::FileSystemError(std::io::Error::other(format!(
+            "Schema extraction failed: {e}"
+        )))
+    })?
+}
+
+/// Parse a CREATE TABLE line and extract the table name.
+fn parse_create_table_line(line: &str) -> Option<String> {
+    let upper = line.to_uppercase();
+    if !upper.starts_with("CREATE TABLE") {
+        return None;
+    }
+    // Skip "CREATE TABLE IF NOT EXISTS" or "CREATE TABLE"
+    let rest = if upper.contains("IF NOT EXISTS") {
+        line.splitn(6, ' ').nth(5)?
+    } else {
+        line.splitn(3, ' ').nth(2)?
+    };
+    let name = rest
+        .trim_start_matches('`')
+        .trim_start_matches('"')
+        .split(['`', '"', '(', ' '])
+        .next()?
+        .trim_end_matches('.')
+        .to_string();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+// -- Dry-Run Preview Command --------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RestorePreview {
+    pub snapshot_name: String,
+    pub snapshot_tables: Vec<String>,
+    pub current_tables: Vec<String>,
+    pub tables_to_add: Vec<String>,
+    pub tables_to_remove: Vec<String>,
+    pub tables_in_common: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn snapshot_restore_preview(
+    db: State<'_, DbState>,
+    paths: State<'_, AppPaths>,
+    snapshot_id: String,
+) -> Result<RestorePreview, DsmError> {
+    // Load snapshot and profile
+    let (snapshot, profile) = {
+        let conn = lock_db(&db)?;
+        let snap = conn
+            .query_row(
+                "SELECT * FROM snapshots WHERE id = ?1",
+                params![snapshot_id],
+                row_to_snapshot,
+            )
+            .map_err(|_| DsmError::SnapshotNotFound(snapshot_id.clone()))?;
+        let prof = conn
+            .query_row(
+                "SELECT * FROM profiles WHERE id = ?1",
+                params![snap.profile_id],
+                row_to_profile,
+            )
+            .map_err(|_| DsmError::ProfileNotFound(snap.profile_id.clone()))?;
+        (snap, prof)
+    };
+
+    let creds = credentials::get_credentials(&profile.id)?;
+
+    // Extract tables from snapshot
+    let schema = extract_schema_from_snapshot(
+        &paths.snapshots_dir.join(&snapshot.file_path),
+        &paths.tmp_dir,
+    )
+    .await?;
+    let snapshot_tables: Vec<String> = schema.keys().cloned().collect();
+
+    // Get current database tables
+    let current_tables = get_current_tables(&profile, &creds, &paths)
+        .await
+        .unwrap_or_default();
+
+    let snap_set: std::collections::HashSet<&str> =
+        snapshot_tables.iter().map(String::as_str).collect();
+    let curr_set: std::collections::HashSet<&str> =
+        current_tables.iter().map(String::as_str).collect();
+
+    let tables_to_add: Vec<String> = snap_set
+        .difference(&curr_set)
+        .map(|s| (*s).to_string())
+        .collect();
+    let tables_to_remove: Vec<String> = curr_set
+        .difference(&snap_set)
+        .map(|s| (*s).to_string())
+        .collect();
+    let tables_in_common: Vec<String> = snap_set
+        .intersection(&curr_set)
+        .map(|s| (*s).to_string())
+        .collect();
+
+    let mut warnings = Vec::new();
+    if !tables_to_remove.is_empty() {
+        warnings.push(format!(
+            "Restoring this snapshot will drop {} table(s) that exist in the current database: {}",
+            tables_to_remove.len(),
+            tables_to_remove.join(", ")
+        ));
+    }
+
+    Ok(RestorePreview {
+        snapshot_name: snapshot.name,
+        snapshot_tables,
+        current_tables,
+        tables_to_add,
+        tables_to_remove,
+        tables_in_common,
+        warnings,
+    })
+}
+
+/// Get current table list from a live database.
+async fn get_current_tables(
+    profile: &Profile,
+    creds: &ProfileCredentials,
+    paths: &AppPaths,
+) -> Result<Vec<String>, DsmError> {
+    match profile.db_type.as_str() {
+        "mysql" => {
+            let df = crate::dump::write_mysql_defaults_file(
+                &paths.tmp_dir,
+                profile.host.as_deref().unwrap_or("127.0.0.1"),
+                profile.port.unwrap_or(3306),
+                profile.username.as_deref().unwrap_or("root"),
+                creds.password.as_deref().unwrap_or(""),
+            )?;
+            let output = tokio::process::Command::new("mysql")
+                .arg(format!("--defaults-extra-file={}", df.display()))
+                .arg(&profile.database_name)
+                .arg("-e")
+                .arg("SHOW TABLES")
+                .arg("--skip-column-names")
+                .output()
+                .await
+                .map_err(|e| DsmError::ConnectionError {
+                    message: format!("Failed to list tables: {e}"),
+                })?;
+            let _ = std::fs::remove_file(&df);
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                Ok(stdout
+                    .lines()
+                    .map(|l| l.trim().to_string())
+                    .filter(|l| !l.is_empty())
+                    .collect())
+            } else {
+                Ok(Vec::new())
+            }
+        }
+        "postgresql" => {
+            let output = tokio::process::Command::new("psql")
+                .env("PGPASSWORD", creds.password.as_deref().unwrap_or(""))
+                .arg("--host")
+                .arg(profile.host.as_deref().unwrap_or("127.0.0.1"))
+                .arg("--port")
+                .arg(profile.port.unwrap_or(5432).to_string())
+                .arg("--username")
+                .arg(profile.username.as_deref().unwrap_or("postgres"))
+                .arg(&profile.database_name)
+                .arg("-t")
+                .arg("-c")
+                .arg("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
+                .output()
+                .await
+                .map_err(|e| DsmError::ConnectionError {
+                    message: format!("Failed to list tables: {e}"),
+                })?;
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                Ok(stdout
+                    .lines()
+                    .map(|l| l.trim().to_string())
+                    .filter(|l| !l.is_empty())
+                    .collect())
+            } else {
+                Ok(Vec::new())
+            }
+        }
+        "sqlite" => {
+            let path = std::path::Path::new(&profile.database_name);
+            if path.exists() {
+                let conn = rusqlite::Connection::open_with_flags(
+                    path,
+                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+                )?;
+                let mut stmt = conn.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")?;
+                let tables = stmt
+                    .query_map([], |row| row.get(0))?
+                    .collect::<Result<Vec<String>, _>>()?;
+                Ok(tables)
+            } else {
+                Ok(Vec::new())
+            }
+        }
+        _ => Ok(Vec::new()),
+    }
+}
+
+// -- Version Compatibility Command --------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionCompatibility {
+    pub compatible: bool,
+    pub snapshot_tool_version: Option<String>,
+    pub snapshot_db_version: Option<String>,
+    pub current_tool_version: Option<String>,
+    pub warnings: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn snapshot_check_version_compatibility(
+    db: State<'_, DbState>,
+    snapshot_id: String,
+) -> Result<VersionCompatibility, DsmError> {
+    let snapshot = {
+        let conn = lock_db(&db)?;
+        conn.query_row(
+            "SELECT * FROM snapshots WHERE id = ?1",
+            params![snapshot_id],
+            row_to_snapshot,
+        )
+        .map_err(|_| DsmError::SnapshotNotFound(snapshot_id.clone()))?
+    };
+
+    // Get profile to determine db type
+    let profile = {
+        let conn = lock_db(&db)?;
+        conn.query_row(
+            "SELECT * FROM profiles WHERE id = ?1",
+            params![snapshot.profile_id],
+            row_to_profile,
+        )
+        .map_err(|_| DsmError::ProfileNotFound(snapshot.profile_id.clone()))?
+    };
+
+    // Get current tool version
+    let current_version = detect_tool_version(&profile.db_type).await;
+
+    let mut warnings = Vec::new();
+    let mut compatible = true;
+
+    if let (Some(ref snap_ver), Some(ref curr_ver)) =
+        (&snapshot.dump_tool_version, &current_version)
+    {
+        let snap_major = snap_ver.split('.').next().unwrap_or("0");
+        let curr_major = curr_ver.0.split('.').next().unwrap_or("0");
+        if snap_major != curr_major {
+            compatible = false;
+            warnings.push(format!(
+                "Major version mismatch: snapshot was created with version {}, current tool is version {}. Cross-major-version restores may produce errors or data loss.",
+                snap_ver, curr_ver.0
+            ));
+        }
+    }
+
+    if snapshot.dump_tool_version.is_none() {
+        warnings.push("No tool version was recorded when this snapshot was created. Version compatibility cannot be verified.".to_string());
+    }
+
+    Ok(VersionCompatibility {
+        compatible,
+        snapshot_tool_version: snapshot.dump_tool_version,
+        snapshot_db_version: snapshot.db_version,
+        current_tool_version: current_version.map(|v| v.0),
+        warnings,
+    })
+}
+
+// -- Export SQL Command -------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExportResult {
+    pub output_path: String,
+    pub size_bytes: u64,
+}
+
+#[tauri::command]
+pub async fn snapshot_export_sql(
+    db: State<'_, DbState>,
+    paths: State<'_, AppPaths>,
+    snapshot_id: String,
+    output_dir: String,
+) -> Result<ExportResult, DsmError> {
+    let snapshot = {
+        let conn = lock_db(&db)?;
+        conn.query_row(
+            "SELECT * FROM snapshots WHERE id = ?1",
+            params![snapshot_id],
+            row_to_snapshot,
+        )
+        .map_err(|_| DsmError::SnapshotNotFound(snapshot_id.clone()))?
+    };
+
+    // Get profile for metadata header
+    let profile = {
+        let conn = lock_db(&db)?;
+        conn.query_row(
+            "SELECT * FROM profiles WHERE id = ?1",
+            params![snapshot.profile_id],
+            row_to_profile,
+        )
+        .ok()
+    };
+
+    let gz_path = paths.snapshots_dir.join(&snapshot.file_path);
+    if !gz_path.exists() {
+        return Err(DsmError::RestoreError {
+            message: "Snapshot file is missing from disk.".to_string(),
+            output: String::new(),
+        });
+    }
+
+    // Build output filename: dbname-date-snapshotname.sql
+    let date_str = snapshot
+        .created_at
+        .split('T')
+        .next()
+        .unwrap_or("unknown-date");
+    let safe_name = snapshot
+        .name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    let db_name = profile
+        .as_ref()
+        .map_or("database", |p| p.database_name.as_str());
+    let output_filename = format!("{db_name}-{date_str}-{safe_name}.sql");
+    let output_path = std::path::Path::new(&output_dir).join(&output_filename);
+
+    let gz = gz_path.clone();
+    let out = output_path.clone();
+    let snap_meta = format!(
+        "-- Amber Snapshot Export\n-- Database: {}\n-- Captured: {}\n-- Snapshot: {} ({})\n-- Tool version: {}\n\n",
+        db_name,
+        snapshot.created_at,
+        snapshot.name,
+        snapshot.id,
+        snapshot.dump_tool_version.as_deref().unwrap_or("unknown"),
+    );
+
+    let size = tokio::task::spawn_blocking(move || -> Result<u64, std::io::Error> {
+        let mut out_file = std::fs::File::create(&out)?;
+        // Write metadata header
+        std::io::Write::write_all(&mut out_file, snap_meta.as_bytes())?;
+        // Decompress and write SQL content
+        crate::compress::decompress_to_writer(&gz, &mut out_file)?;
+        Ok(std::fs::metadata(&out)?.len())
+    })
+    .await
+    .map_err(|e| {
+        DsmError::FileSystemError(std::io::Error::other(format!("Export task failed: {e}")))
+    })?
+    .map_err(DsmError::FileSystemError)?;
+
+    Ok(ExportResult {
+        output_path: output_path.to_string_lossy().to_string(),
+        size_bytes: size,
+    })
+}
+
+// -- Streaming Progress Commands (added for progress tracking) ----------------
+
+/// Update the progress phase for streaming dump operations.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamingDumpProgress {
+    pub current_table: String,
+    pub tables_completed: u32,
+    pub total_tables: u32,
+    pub bytes_processed: u64,
 }
 
 #[cfg(test)]

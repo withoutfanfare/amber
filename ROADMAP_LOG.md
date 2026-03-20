@@ -1,5 +1,22 @@
 # Amber Roadmap Log
 
+## Cycle: 2026-03-20 12:50
+- **Items added:** none
+- **Items completed:**
+  - [UX/UI] Add snapshot size estimation before capture (P2, M) — completed 2026-03-20
+  - [Performance] Implement streaming progress for large database dumps (P2, M) — completed 2026-03-20
+  - [UX/UI] Add snapshot tagging and search (P3, S) — completed 2026-03-20
+  - [Distribution] Add first-run setup wizard for database tool discovery (P2, M) — completed 2026-03-20
+  - [Feature] Add snapshot retention policies and disk usage monitoring (P2, S) — completed 2026-03-20
+  - [Feature] Compare schema differences between two snapshots (P2, M) — completed 2026-03-20
+  - [UX/UI] Add snapshot restore dry-run preview (P2, S) — completed 2026-03-20
+  - [Quality] Add database tool version compatibility checking (P2, S) — completed 2026-03-20
+  - [Feature] Add snapshot export as portable SQL file (P3, S) — completed 2026-03-20
+  - [Feature] Add snapshot restore to alternate database (P2, M) — completed 2026-03-20
+  - [UX/UI] Add keyboard shortcuts (P2, S) — completed 2026-03-20
+- **Items archived:** none
+- **Observations:** Batch execution of all 11 remaining functional roadmap items. Amber now has comprehensive snapshot management: size estimation, streaming progress with table tracking, tagging and search, tool discovery wizard, retention policies with pinned protection, schema comparison between snapshots, restore dry-run preview, tool version compatibility checking, SQL export, alternate database restore, and keyboard shortcuts with help overlay. Remaining pending items: pre-migration auto-capture (P3/M, requires file watcher/shell hook), snapshot content browser (P3/M, requires SQL parsing from compressed files), and Design System Adoption section (2 items, needs Danny's input). Amber is now at 4 pending items (2 functional + 2 design system).
+
 ## Cycle: 2026-03-19 08:00
 - **Items added:**
   - [Quality] Migrate persistence from localStorage to SQLite (P1, L)

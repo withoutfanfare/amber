@@ -75,6 +75,38 @@ fn migrations() -> Migrations<'static> {
         M::up(
             "ALTER TABLE snapshots ADD COLUMN checksum TEXT;",
         ),
+        // Migration 5: Tags table for snapshot tagging
+        M::up(
+            "CREATE TABLE snapshot_tags (
+                snapshot_id TEXT NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
+                tag         TEXT NOT NULL,
+                PRIMARY KEY (snapshot_id, tag)
+            );
+
+            CREATE INDEX idx_snapshot_tags_tag ON snapshot_tags(tag);",
+        ),
+        // Migration 6: Pinned flag for retention policy protection
+        M::up(
+            "ALTER TABLE snapshots ADD COLUMN pinned INTEGER DEFAULT 0;",
+        ),
+        // Migration 7: Retention policies per profile
+        M::up(
+            "CREATE TABLE retention_policies (
+                profile_id      TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+                max_count       INTEGER,
+                max_age_days    INTEGER,
+                max_size_bytes  INTEGER
+            );",
+        ),
+        // Migration 8: Tool paths for setup wizard
+        M::up(
+            "CREATE TABLE tool_paths (
+                tool_name   TEXT PRIMARY KEY,
+                path        TEXT NOT NULL,
+                version     TEXT,
+                discovered_at TEXT NOT NULL
+            );",
+        ),
     ])
 }
 

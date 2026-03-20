@@ -37,6 +37,8 @@ const makeSnapshot = (overrides: Partial<Snapshot> = {}): Snapshot => ({
   checksum: null,
   createdAt: "2026-01-15T10:30:00Z",
   restoredAt: null,
+  pinned: false,
+  tags: [],
   ...overrides,
 });
 
