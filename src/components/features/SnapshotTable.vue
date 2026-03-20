@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { ref, computed } from "vue";
-  import Button from "@/components/ui/Button.vue";
+  import { SButton } from "@stuntrocket/ui";
   import type { Snapshot, Profile } from "@/types";
 
   const props = defineProps<{
@@ -155,10 +155,10 @@
           </td>
           <td class="px-3 py-3 text-right">
             <div class="flex items-center justify-end gap-1">
-              <Button variant="ghost" size="sm" @click="emit('restore', snapshot.id)">
+              <SButton variant="ghost" size="sm" @click="emit('restore', snapshot.id)">
                 Restore
-              </Button>
-              <Button
+              </SButton>
+              <SButton
                 variant="ghost"
                 size="sm"
                 @click="emit('reveal', snapshot)"
@@ -177,15 +177,15 @@
                     d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
                   />
                 </svg>
-              </Button>
-              <Button
+              </SButton>
+              <SButton
                 variant="ghost"
                 size="sm"
                 class="text-danger hover:text-danger"
                 @click="emit('delete', snapshot.id)"
               >
                 Delete
-              </Button>
+              </SButton>
             </div>
           </td>
         </tr>

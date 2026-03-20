@@ -53,8 +53,29 @@
 - **Items archived:** none
 - **Observations:** Amber remains at 14 pending items (11 functional + 3 design system), one below the rebalancing threshold. No items have moved to in-progress since the roadmap was seeded — the portfolio-wide execution stall continues. Adding further items would inflate the backlog without value. The P1 cluster (SQLite migration + real subprocess execution) remains the critical path and the clear starting point for the first development session. Recommend starting with the subprocess execution item as it delivers the app's core value proposition; the SQLite migration can follow once real dump data needs a durable store.
 
+## Cycle: 2026-03-21 14:00
+- **Items added:**
+  - [UX/UI] Add snapshot restore dry-run preview showing schema and data impact (P2, S)
+  - [Quality] Add database tool version compatibility checking before operations (P2, S)
+  - [Feature] Add snapshot export as portable SQL file for cross-tool compatibility (P3, S)
+- **Items archived:** none
+- **Observations:** Amber dropped to 9 pending items (7 functional + 2 design system) after four completions (SQLite migration, subprocess execution, error handling, integrity verification) — now well below the 15-item threshold. The three additions address the next layer of operational maturity for a database tool with real dump/restore capabilities: the dry-run preview protects users from schema-mismatched restores (critical after migrations), version compatibility checking prevents silent cross-version issues (a common pain point with mysqldump), and SQL export makes Amber's snapshots portable for team sharing and CI seeding. All three are small (S) and build on the now-operational snapshot infrastructure. Amber is now at 12 pending items (10 functional + 2 design system). The P2 cluster (streaming progress, size estimation, setup wizard, retention policies, restore preview, version checking) forms the strongest functional batch.
+
 ## Cycle: 2026-03-19 23:29
 - **Items added:**
   - [Feature] Compare schema differences between two snapshots (P2, M)
 - **Items archived:** none
 - **Observations:** Added only 1 item this cycle — Amber is at 14 pending items (11 functional + 3 design system), approaching the 15-item threshold. The schema diff feature elevates Amber from a backup tool to a database change audit tool, which is a strong differentiator. It complements the P1 subprocess execution item — once real dumps work, comparing them becomes the natural next question. The P1 cluster (SQLite migration + real subprocess execution) remains the critical path. No items are stale (all < 1 day old).
+
+## Cycle: 2026-03-20 22:30
+- **Items added:**
+  - [Feature] Add snapshot restore to alternate database for safe data inspection (P2, M)
+  - [UX/UI] Add keyboard shortcuts for common snapshot operations (P2, S)
+  - [Feature] Add snapshot content browser for inspecting data without restoring (P3, M)
+- **Items archived:** none
+- **Observations:** Three additions filling distinct gaps. Alternate restore (P2, M) addresses the single biggest usability limitation of the current restore workflow — it's always destructive, even when users only want to inspect old data. Keyboard shortcuts (P2, S) bring Amber in line with every other app in the portfolio, all of which have shortcuts implemented or planned. The content browser (P3, M) complements the existing restore dry-run preview by letting users inspect actual data, not just schema differences. Four items completed (SQLite migration, subprocess execution, error handling, integrity verification) demonstrate strong execution velocity. Amber is now at 15 pending items (13 functional + 2 design system) — at the rebalancing threshold. No items stale (all added within the past 2 days). The P2 cluster (streaming progress, size estimation, setup wizard, retention policies, schema compare, restore preview, version checking, alternate restore, keyboard shortcuts) is large at 9 items — recommend starting with keyboard shortcuts (P2, S) and streaming progress (P2, M) as the pair that delivers the most immediate UX improvement during daily snapshot operations.
+
+## Cycle: 2026-03-20 20:30
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Amber remains at 15 pending items (13 functional + 2 design system) — at the rebalancing threshold. Four completed items (SQLite migration, subprocess execution, error handling, integrity verification) show strong execution velocity. No additions warranted — the roadmap is comprehensive across all categories and adding further items without execution progress would inflate the backlog. The P2 cluster is the largest in the portfolio at 9 items, providing ample execution targets. Recommend starting with keyboard shortcuts (P2, S) as the quickest win, followed by streaming progress (P2, M) and the first-run setup wizard (P2, M) as the pair that delivers the best new-user experience.

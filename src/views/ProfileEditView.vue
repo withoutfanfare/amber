@@ -2,11 +2,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProfileStore } from '@/stores/profiles'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import Button from '@/components/ui/Button.vue'
+import { SButton, SConfirmDialog } from '@stuntrocket/ui'
 import ProfileForm from '@/components/features/ProfileForm.vue'
-import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import type { ProfileCreatePayload } from '@/types'
 
 const props = defineProps<{
@@ -15,7 +14,7 @@ const props = defineProps<{
 
 const router = useRouter()
 const profileStore = useProfileStore()
-const toast = useToast()
+const toast = useToastStack()
 const submitting = ref(false)
 const deleteDialogOpen = ref(false)
 
@@ -60,23 +59,23 @@ async function handleDelete() {
   <div>
     <PageHeader>
       <template #prepend>
-        <Button variant="ghost" size="sm" to="/profiles">
+        <SButton variant="ghost" size="sm" to="/profiles">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="m15 18-6-6 6-6" />
           </svg>
           Back
-        </Button>
+        </SButton>
         <h1 class="text-lg font-semibold">Edit Profile</h1>
       </template>
       <template #actions>
-        <Button variant="ghost" size="sm" class="text-danger hover:text-danger" @click="deleteDialogOpen = true">
+        <SButton variant="ghost" size="sm" class="text-danger hover:text-danger" @click="deleteDialogOpen = true">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M3 6h18" />
             <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
             <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
           </svg>
           Delete
-        </Button>
+        </SButton>
       </template>
     </PageHeader>
 
@@ -92,7 +91,7 @@ async function handleDelete() {
       @cancel="router.push('/profiles')"
     />
 
-    <ConfirmDialog
+    <SConfirmDialog
       :open="deleteDialogOpen"
       title="Delete Profile"
       :message="`Are you sure you want to delete &quot;${profile?.name ?? ''}&quot;? This will also remove all associated snapshots. This action cannot be undone.`"
@@ -100,6 +99,7 @@ async function handleDelete() {
       :danger="true"
       @confirm="handleDelete"
       @cancel="deleteDialogOpen = false"
+      @close="deleteDialogOpen = false"
     />
   </div>
 </template>

@@ -18,6 +18,7 @@
     "postinstall": "lefthook install"
   },
   "dependencies": {
+    "@stuntrocket/ui": "^0.7.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-opener": "^2",
     "pinia": "^3.0.4",

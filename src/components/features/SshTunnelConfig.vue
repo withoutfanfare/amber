@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import FormInput from '@/components/ui/FormInput.vue'
+import { SFormField, SInput } from '@stuntrocket/ui'
 
 interface SshTunnelValue {
   enabled: boolean
@@ -43,39 +43,44 @@ function update(field: keyof SshTunnelValue, value: string | number | boolean) {
 
     <template v-if="model.enabled">
       <div class="grid grid-cols-2 gap-4">
-        <FormInput
-          :model-value="model.host"
-          label="SSH Host"
-          placeholder="ssh.example.com"
-          @update:model-value="update('host', $event)"
-        />
-        <FormInput
-          :model-value="model.port"
-          label="SSH Port"
-          type="number"
-          placeholder="22"
-          @update:model-value="update('port', Number($event))"
-        />
+        <SFormField label="SSH Host">
+          <SInput
+            :model-value="model.host"
+            placeholder="ssh.example.com"
+            @update:model-value="update('host', $event)"
+          />
+        </SFormField>
+        <SFormField label="SSH Port">
+          <SInput
+            :model-value="model.port"
+            type="number"
+            placeholder="22"
+            @update:model-value="update('port', Number($event))"
+          />
+        </SFormField>
       </div>
-      <FormInput
-        :model-value="model.user"
-        label="SSH User"
-        placeholder="deploy"
-        @update:model-value="update('user', $event)"
-      />
-      <FormInput
-        :model-value="model.keyPath"
-        label="SSH Key Path"
-        placeholder="~/.ssh/id_rsa"
-        @update:model-value="update('keyPath', $event)"
-      />
-      <FormInput
-        :model-value="model.password"
-        label="SSH Password"
-        type="password"
-        placeholder="SSH passphrase or password"
-        @update:model-value="update('password', $event)"
-      />
+      <SFormField label="SSH User">
+        <SInput
+          :model-value="model.user"
+          placeholder="deploy"
+          @update:model-value="update('user', $event)"
+        />
+      </SFormField>
+      <SFormField label="SSH Key Path">
+        <SInput
+          :model-value="model.keyPath"
+          placeholder="~/.ssh/id_rsa"
+          @update:model-value="update('keyPath', $event)"
+        />
+      </SFormField>
+      <SFormField label="SSH Password">
+        <SInput
+          :model-value="model.password"
+          type="password"
+          placeholder="SSH passphrase or password"
+          @update:model-value="update('password', $event)"
+        />
+      </SFormField>
     </template>
   </div>
 </template>

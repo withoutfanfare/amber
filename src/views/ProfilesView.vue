@@ -2,17 +2,15 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProfileStore } from '@/stores/profiles'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import Button from '@/components/ui/Button.vue'
-import EmptyState from '@/components/ui/EmptyState.vue'
-import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
+import { SButton, SEmptyState, SConfirmDialog } from '@stuntrocket/ui'
 import ProfileCard from '@/components/features/ProfileCard.vue'
 import type { Profile } from '@/types'
 
 const router = useRouter()
 const profileStore = useProfileStore()
-const toast = useToast()
+const toast = useToastStack()
 
 const deleteDialogOpen = ref(false)
 const profileToDelete = ref<Profile | null>(null)
@@ -60,7 +58,7 @@ async function handleTest(profile: Profile) {
         <p class="text-sm text-text-tertiary">Connection profiles store your database credentials and connection details.</p>
       </template>
       <template #actions>
-        <Button variant="primary" size="sm" to="/profiles/create">New Profile</Button>
+        <SButton variant="primary" size="sm" to="/profiles/create">New Profile</SButton>
       </template>
     </PageHeader>
 
@@ -70,13 +68,14 @@ async function handleTest(profile: Profile) {
     </div>
 
     <!-- Empty state -->
-    <EmptyState
+    <SEmptyState
       v-else-if="profileStore.profiles.length === 0"
-      message="No connection profiles yet. Create one to get started."
-      action-label="Create Profile"
-      icon="database"
-      @action="router.push('/profiles/create')"
-    />
+      title="No connection profiles yet. Create one to get started."
+    >
+      <template #action>
+        <SButton variant="primary" @click="router.push('/profiles/create')">Create Profile</SButton>
+      </template>
+    </SEmptyState>
 
     <!-- Profiles grouped by project -->
     <div v-else class="space-y-8 stagger-fade-in">
@@ -97,7 +96,7 @@ async function handleTest(profile: Profile) {
     </div>
 
     <!-- Delete confirmation dialog -->
-    <ConfirmDialog
+    <SConfirmDialog
       :open="deleteDialogOpen"
       title="Delete Profile"
       :message="`Are you sure you want to delete the profile &quot;${profileToDelete?.name ?? ''}&quot;? This will also remove all associated snapshots. This action cannot be undone.`"
@@ -105,6 +104,7 @@ async function handleTest(profile: Profile) {
       :danger="true"
       @confirm="handleDeleteConfirm"
       @cancel="deleteDialogOpen = false"
+      @close="deleteDialogOpen = false"
     />
   </div>
 </template>

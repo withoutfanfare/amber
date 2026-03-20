@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import { useToast } from '@/composables/useToast'
+import { useToastStack, SCard, SInput } from '@stuntrocket/ui'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import Card from '@/components/ui/Card.vue'
-import FormInput from '@/components/ui/FormInput.vue'
 
 const settingsStore = useSettingsStore()
-const toast = useToast()
+const toast = useToastStack()
 
 const autoPruneEnabled = ref(false)
 const autoPruneDays = ref(30)
@@ -60,16 +58,16 @@ watch(autoPruneDays, (val) => {
 
     <div v-else class="max-w-xl space-y-6">
       <!-- Snapshot directory -->
-      <Card>
+      <SCard>
         <h3 class="text-sm font-semibold text-text-primary mb-3">Snapshot Directory</h3>
         <p class="text-sm text-text-secondary mb-1">Snapshots are stored at:</p>
         <p class="text-sm font-mono text-text-primary bg-surface-raised rounded-lg px-3 py-2 border border-border-subtle">
           {{ snapshotDir }}
         </p>
-      </Card>
+      </SCard>
 
       <!-- Auto-prune settings -->
-      <Card>
+      <SCard>
         <h3 class="text-sm font-semibold text-text-primary mb-3">Auto-Prune</h3>
         <div class="space-y-3">
           <label class="flex items-center gap-2 cursor-pointer">
@@ -84,24 +82,23 @@ watch(autoPruneDays, (val) => {
           <div v-if="autoPruneEnabled" class="flex items-center gap-2 pl-6">
             <span class="text-sm text-text-secondary">Delete snapshots older than</span>
             <div class="w-20">
-              <FormInput
+              <SInput
                 v-model="autoPruneDays"
                 type="number"
-                size="sm"
               />
             </div>
             <span class="text-sm text-text-secondary">days</span>
           </div>
         </div>
-      </Card>
+      </SCard>
 
       <!-- Compression -->
-      <Card>
+      <SCard>
         <h3 class="text-sm font-semibold text-text-primary mb-3">Compression</h3>
         <p class="text-sm text-text-secondary">
           Compression level: <span class="text-text-primary font-medium">Default (gzip)</span>
         </p>
-      </Card>
+      </SCard>
     </div>
   </div>
 </template>

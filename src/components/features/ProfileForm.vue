@@ -1,9 +1,6 @@
 <script setup lang="ts">
 import { reactive, computed, watch } from 'vue'
-import FormInput from '@/components/ui/FormInput.vue'
-import FormSelect from '@/components/ui/FormSelect.vue'
-import FormTextarea from '@/components/ui/FormTextarea.vue'
-import Button from '@/components/ui/Button.vue'
+import { SFormField, SInput, SSelect, STextarea, SButton } from '@stuntrocket/ui'
 import SshTunnelConfig from './SshTunnelConfig.vue'
 import type { Profile, DbType, Environment, ProfileCreatePayload } from '@/types'
 
@@ -92,71 +89,52 @@ function handleSubmit() {
 <template>
   <form class="space-y-5" @submit.prevent="handleSubmit">
     <div class="grid grid-cols-2 gap-4">
-      <FormInput
-        v-model="form.project"
-        label="Project"
-        placeholder="my-app"
-      />
-      <FormInput
-        v-model="form.name"
-        label="Profile Name"
-        placeholder="local-main"
-      />
+      <SFormField label="Project">
+        <SInput v-model="form.project" placeholder="my-app" />
+      </SFormField>
+      <SFormField label="Profile Name">
+        <SInput v-model="form.name" placeholder="local-main" />
+      </SFormField>
     </div>
 
     <div class="grid grid-cols-2 gap-4">
-      <FormSelect
-        v-model="form.dbType"
-        label="Database Type"
-        :options="dbTypeOptions"
-      />
-      <FormSelect
-        v-model="form.environment"
-        label="Environment"
-        :options="environmentOptions"
-      />
+      <SFormField label="Database Type">
+        <SSelect v-model="form.dbType">
+          <option v-for="opt in dbTypeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </SSelect>
+      </SFormField>
+      <SFormField label="Environment">
+        <SSelect v-model="form.environment">
+          <option v-for="opt in environmentOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+        </SSelect>
+      </SFormField>
     </div>
 
     <div v-if="!isSqlite" class="grid grid-cols-2 gap-4">
-      <FormInput
-        v-model="form.host"
-        label="Host"
-        placeholder="127.0.0.1"
-      />
-      <FormInput
-        v-model="form.port"
-        label="Port"
-        type="number"
-        :placeholder="form.dbType === 'mysql' ? '3306' : '5432'"
-      />
+      <SFormField label="Host">
+        <SInput v-model="form.host" placeholder="127.0.0.1" />
+      </SFormField>
+      <SFormField label="Port">
+        <SInput v-model="form.port" type="number" :placeholder="form.dbType === 'mysql' ? '3306' : '5432'" />
+      </SFormField>
     </div>
 
-    <FormInput
-      v-model="form.databaseName"
-      :label="isSqlite ? 'Database File Path' : 'Database Name'"
-      :placeholder="isSqlite ? '/path/to/database.db' : 'my_database'"
-    />
+    <SFormField :label="isSqlite ? 'Database File Path' : 'Database Name'">
+      <SInput v-model="form.databaseName" :placeholder="isSqlite ? '/path/to/database.db' : 'my_database'" />
+    </SFormField>
 
     <div v-if="!isSqlite" class="grid grid-cols-2 gap-4">
-      <FormInput
-        v-model="form.username"
-        label="Username"
-        placeholder="root"
-      />
-      <FormInput
-        v-model="form.password"
-        label="Password"
-        type="password"
-        placeholder="Enter password"
-      />
+      <SFormField label="Username">
+        <SInput v-model="form.username" placeholder="root" />
+      </SFormField>
+      <SFormField label="Password">
+        <SInput v-model="form.password" type="password" placeholder="Enter password" />
+      </SFormField>
     </div>
 
-    <FormTextarea
-      v-model="form.notes"
-      label="Notes"
-      placeholder="Optional notes about this connection"
-      :rows="3"
-    />
+    <SFormField label="Notes">
+      <STextarea v-model="form.notes" placeholder="Optional notes about this connection" :rows="3" />
+    </SFormField>
 
     <div class="border-t border-border-subtle pt-4">
       <SshTunnelConfig v-model="form.ssh" />
@@ -164,12 +142,12 @@ function handleSubmit() {
 
     <!-- Sticky footer -->
     <div class="sticky bottom-0 -mx-6 mt-6 flex items-center justify-end gap-3 border-t border-border-subtle bg-surface-base/80 px-6 py-4 backdrop-blur-sm">
-      <Button variant="ghost" size="md" @click="emit('cancel')">
+      <SButton variant="ghost" @click="emit('cancel')">
         Cancel
-      </Button>
-      <Button variant="primary" size="md" type="submit" :loading="submitting">
+      </SButton>
+      <SButton variant="primary" :loading="submitting">
         {{ initialData?.id ? 'Save Changes' : 'Create Profile' }}
-      </Button>
+      </SButton>
     </div>
   </form>
 </template>

@@ -3,17 +3,14 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProfileStore } from '@/stores/profiles'
 import { useSnapshotStore } from '@/stores/snapshots'
-import { useToast } from '@/composables/useToast'
+import { useToastStack } from '@stuntrocket/ui'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import Button from '@/components/ui/Button.vue'
-import FormInput from '@/components/ui/FormInput.vue'
-import FormSelect from '@/components/ui/FormSelect.vue'
-import FormTextarea from '@/components/ui/FormTextarea.vue'
+import { SButton, SFormField, SInput, SSelect, STextarea } from '@stuntrocket/ui'
 
 const router = useRouter()
 const profileStore = useProfileStore()
 const snapshotStore = useSnapshotStore()
-const toast = useToast()
+const toast = useToastStack()
 
 const selectedProfileId = ref('')
 const name = ref('')
@@ -55,35 +52,41 @@ async function handleSubmit() {
   <div>
     <PageHeader>
       <template #prepend>
-        <Button variant="ghost" size="sm" to="/snapshots">
+        <SButton variant="ghost" size="sm" to="/snapshots">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="m15 18-6-6 6-6" />
           </svg>
           Back
-        </Button>
+        </SButton>
         <h1 class="text-lg font-semibold">Create Snapshot</h1>
       </template>
     </PageHeader>
 
     <form class="max-w-xl space-y-5" @submit.prevent="handleSubmit">
-      <FormSelect
-        v-model="selectedProfileId"
-        label="Profile"
-        :options="profileOptions"
-      />
+      <SFormField label="Profile">
+        <SSelect v-model="selectedProfileId">
+          <option
+            v-for="opt in profileOptions"
+            :key="opt.value"
+            :value="opt.value"
+          >{{ opt.label }}</option>
+        </SSelect>
+      </SFormField>
 
-      <FormInput
-        v-model="name"
-        label="Snapshot Name"
-        placeholder="before-migration-v2"
-      />
+      <SFormField label="Snapshot Name">
+        <SInput
+          v-model="name"
+          placeholder="before-migration-v2"
+        />
+      </SFormField>
 
-      <FormTextarea
-        v-model="note"
-        label="Note"
-        placeholder="Optional description of what this snapshot captures"
-        :rows="3"
-      />
+      <SFormField label="Note">
+        <STextarea
+          v-model="note"
+          placeholder="Optional description of what this snapshot captures"
+          :rows="3"
+        />
+      </SFormField>
 
       <!-- Progress section -->
       <div v-if="snapshotStore.creating && snapshotStore.progress" class="space-y-2">
@@ -100,18 +103,17 @@ async function handleSubmit() {
 
       <!-- Sticky footer -->
       <div class="sticky bottom-0 -mx-6 mt-6 flex items-center justify-end gap-3 border-t border-border-subtle bg-surface-base/80 px-6 py-4 backdrop-blur-sm">
-        <Button variant="ghost" size="md" @click="router.push('/snapshots')">
+        <SButton variant="ghost" size="md" @click="router.push('/snapshots')">
           Cancel
-        </Button>
-        <Button
+        </SButton>
+        <SButton
           variant="primary"
           size="md"
-          type="submit"
           :loading="snapshotStore.creating"
           :disabled="!selectedProfileId || !name.trim()"
         >
           Create Snapshot
-        </Button>
+        </SButton>
       </div>
     </form>
   </div>

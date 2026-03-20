@@ -5,12 +5,9 @@
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { useProfileStore } from "@/stores/profiles";
   import { useSnapshotStore } from "@/stores/snapshots";
-  import { useToast } from "@/composables/useToast";
+  import { useToastStack } from "@stuntrocket/ui";
   import PageHeader from "@/components/layout/PageHeader.vue";
-  import Button from "@/components/ui/Button.vue";
-  import FormSelect from "@/components/ui/FormSelect.vue";
-  import EmptyState from "@/components/ui/EmptyState.vue";
-  import ConfirmDialog from "@/components/ui/ConfirmDialog.vue";
+  import { SButton, SFormField, SSelect, SEmptyState, SConfirmDialog } from "@stuntrocket/ui";
   import SnapshotTable from "@/components/features/SnapshotTable.vue";
   import SnapshotRestoreDialog from "@/components/features/SnapshotRestoreDialog.vue";
   import type { Snapshot, SnapshotRestoreOptions } from "@/types";
@@ -20,7 +17,7 @@
   const router = useRouter();
   const profileStore = useProfileStore();
   const snapshotStore = useSnapshotStore();
-  const toast = useToast();
+  const toast = useToastStack();
 
   const selectedProfileId = ref<string>("all");
   const restoreDialogOpen = ref(false);
@@ -131,18 +128,21 @@
         </p>
       </template>
       <template #actions>
-        <Button variant="primary" size="sm" to="/snapshots/create">New Snapshot</Button>
+        <SButton variant="primary" size="sm" to="/snapshots/create">New Snapshot</SButton>
       </template>
     </PageHeader>
 
     <!-- Profile filter -->
     <div class="mb-5 max-w-xs">
-      <FormSelect
-        v-model="selectedProfileId"
-        label="Filter by profile"
-        :options="profileFilterOptions"
-        size="sm"
-      />
+      <SFormField label="Filter by profile">
+        <SSelect v-model="selectedProfileId" size="sm">
+          <option
+            v-for="opt in profileFilterOptions"
+            :key="opt.value"
+            :value="opt.value"
+          >{{ opt.label }}</option>
+        </SSelect>
+      </SFormField>
     </div>
 
     <!-- Progress indicator during restore -->
@@ -162,13 +162,14 @@
     </div>
 
     <!-- Empty state -->
-    <EmptyState
+    <SEmptyState
       v-else-if="snapshotStore.snapshots.length === 0"
-      message="No snapshots yet. Create one to capture your database state."
-      action-label="Create Snapshot"
-      icon="snapshot"
-      @action="router.push('/snapshots/create')"
-    />
+      title="No snapshots yet. Create one to capture your database state."
+    >
+      <template #action>
+        <SButton variant="primary" size="sm" @click="router.push('/snapshots/create')">Create Snapshot</SButton>
+      </template>
+    </SEmptyState>
 
     <!-- Snapshot table -->
     <SnapshotTable
@@ -192,7 +193,7 @@
     />
 
     <!-- Delete confirmation dialog -->
-    <ConfirmDialog
+    <SConfirmDialog
       :open="deleteDialogOpen"
       title="Delete Snapshot"
       :message="`Are you sure you want to delete the snapshot &quot;${targetSnapshot?.name ?? ''}&quot;? The snapshot file will be permanently removed. This action cannot be undone.`"
@@ -200,6 +201,7 @@
       :danger="true"
       @confirm="handleDeleteConfirm"
       @cancel="deleteDialogOpen = false"
+      @close="deleteDialogOpen = false"
     />
   </div>
 </template>

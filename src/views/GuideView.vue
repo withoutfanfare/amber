@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import PageHeader from '@/components/layout/PageHeader.vue'
-import Card from '@/components/ui/Card.vue'
-import Badge from '@/components/ui/Badge.vue'
+import { SCard, SBadge } from '@stuntrocket/ui'
 </script>
 
 <template>
@@ -14,7 +13,7 @@ import Badge from '@/components/ui/Badge.vue'
 
     <div class="space-y-6 stagger-fade-in">
       <!-- Getting Started -->
-      <Card>
+      <SCard>
         <h2 class="text-base font-semibold text-text-primary mb-3">Getting Started</h2>
         <p class="text-sm text-text-secondary leading-relaxed mb-4">
           Amber gives you git-like version control for your local development databases.
@@ -25,10 +24,10 @@ import Badge from '@/components/ui/Badge.vue'
           <li><strong class="text-text-primary">Take a snapshot</strong> &mdash; capture a compressed backup of your database at any point.</li>
           <li><strong class="text-text-primary">Restore when needed</strong> &mdash; roll back to any previous snapshot instantly.</li>
         </ol>
-      </Card>
+      </SCard>
 
       <!-- Connection Profiles -->
-      <Card>
+      <SCard>
         <h2 class="text-base font-semibold text-text-primary mb-3">Connection Profiles</h2>
         <p class="text-sm text-text-secondary leading-relaxed mb-4">
           A connection profile stores everything Amber needs to connect to one of your databases.
@@ -37,9 +36,9 @@ import Badge from '@/components/ui/Badge.vue'
 
         <h3 class="text-xs font-semibold text-text-tertiary uppercase tracking-wide mb-2">Supported Database Types</h3>
         <div class="flex gap-2 mb-4">
-          <Badge label="MySQL" variant="accent" />
-          <Badge label="PostgreSQL" variant="info" />
-          <Badge label="SQLite" variant="muted" />
+          <SBadge variant="accent">MySQL</SBadge>
+          <SBadge variant="info">PostgreSQL</SBadge>
+          <SBadge variant="default">SQLite</SBadge>
         </div>
 
         <h3 class="text-xs font-semibold text-text-tertiary uppercase tracking-wide mb-2">Profile Fields</h3>
@@ -57,10 +56,10 @@ import Badge from '@/components/ui/Badge.vue'
           through your SSH host before connecting to the database, so you can snapshot remote databases as
           if they were local.
         </p>
-      </Card>
+      </SCard>
 
       <!-- Snapshots -->
-      <Card>
+      <SCard>
         <h2 class="text-base font-semibold text-text-primary mb-3">Snapshots</h2>
         <p class="text-sm text-text-secondary leading-relaxed mb-4">
           A snapshot is a compressed, point-in-time backup of your database. Under the hood, Amber uses native
@@ -83,10 +82,10 @@ import Badge from '@/components/ui/Badge.vue'
           They are organised by project in the application data directory and can be inspected with any tool
           that reads gzip files.
         </p>
-      </Card>
+      </SCard>
 
       <!-- Storage & Pruning -->
-      <Card>
+      <SCard>
         <h2 class="text-base font-semibold text-text-primary mb-3">Storage &amp; Pruning</h2>
         <p class="text-sm text-text-secondary leading-relaxed mb-4">
           Snapshots live in the application data directory, grouped into folders by project name. The Storage
@@ -97,17 +96,17 @@ import Badge from '@/components/ui/Badge.vue'
           <li><strong class="text-text-primary">Delete by project</strong> &mdash; remove all snapshots for a specific project at once.</li>
           <li><strong class="text-text-primary">Individual delete</strong> &mdash; remove a single snapshot from the Snapshots view.</li>
         </ul>
-      </Card>
+      </SCard>
 
       <!-- Quick Workflow Tips -->
-      <Card>
+      <SCard>
         <h2 class="text-base font-semibold text-text-primary mb-3">Quick Workflow Tips</h2>
         <ul class="text-sm text-text-secondary leading-relaxed space-y-1.5">
           <li><strong class="text-text-primary">Profile selector</strong> &mdash; use the dropdown at the bottom of the sidebar to quickly switch your active profile without leaving the current view.</li>
           <li><strong class="text-text-primary">Dashboard</strong> &mdash; the home view gives you one-click access to common actions: create a snapshot, view recent snapshots, and check storage.</li>
           <li><strong class="text-text-primary">Filter snapshots</strong> &mdash; on the Snapshots view, use the profile filter to narrow the list to a single database.</li>
         </ul>
-      </Card>
+      </SCard>
     </div>
   </div>
 </template>

@@ -1,12 +1,7 @@
 <script setup lang="ts">
-import { provide } from 'vue'
 import { RouterView } from 'vue-router'
 import AppSidebar from './AppSidebar.vue'
-import ToastNotification from '@/components/ui/ToastNotification.vue'
-import { ToastKey, useToastProvider } from '@/composables/useToast'
-
-const toast = useToastProvider()
-provide(ToastKey, toast)
+import { SToastContainer } from '@stuntrocket/ui'
 </script>
 
 <template>
@@ -35,22 +30,6 @@ provide(ToastKey, toast)
     </div>
 
     <!-- Toasts -->
-    <div class="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2">
-      <TransitionGroup
-        enter-from-class="translate-y-3 opacity-0"
-        enter-active-class="transition-all duration-300 ease-out"
-        leave-to-class="translate-y-3 opacity-0"
-        leave-active-class="transition-all duration-200 ease-in"
-      >
-        <ToastNotification
-          v-for="t in toast.toasts.value"
-          :key="t.id"
-          :message="t.message"
-          :type="t.type"
-          :duration="t.duration"
-          @dismiss="toast.dismiss(t.id)"
-        />
-      </TransitionGroup>
-    </div>
+    <SToastContainer />
   </div>
 </template>

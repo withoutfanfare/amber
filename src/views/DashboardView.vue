@@ -5,8 +5,7 @@ import { useProfileStore } from '@/stores/profiles'
 import { useSnapshotStore } from '@/stores/snapshots'
 import { useRestoreHistoryStore } from '@/stores/restoreHistory'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import Card from '@/components/ui/Card.vue'
-import Button from '@/components/ui/Button.vue'
+import { SCard, SButton } from '@stuntrocket/ui'
 import KpiCard from '@/components/features/KpiCard.vue'
 import type { StorageInfo } from '@/types'
 
@@ -91,7 +90,7 @@ function getProfileName(profileId: string): string {
       </div>
 
       <!-- Recent Snapshots -->
-      <Card>
+      <SCard>
         <h3 class="text-sm font-semibold text-text-primary mb-3">Recent Snapshots</h3>
         <div v-if="snapshotStore.recentSnapshots.length === 0" class="text-sm text-text-secondary py-4 text-center">
           No snapshots yet.
@@ -118,10 +117,10 @@ function getProfileName(profileId: string): string {
             </tr>
           </tbody>
         </table>
-      </Card>
+      </SCard>
 
       <!-- Recent Restores -->
-      <Card>
+      <SCard>
         <h3 class="text-sm font-semibold text-text-primary mb-3">Recent Restores</h3>
         <div v-if="restoreHistoryStore.recentRestores.length === 0" class="text-sm text-text-secondary py-4 text-center">
           No restores yet.
@@ -150,17 +149,17 @@ function getProfileName(profileId: string): string {
             </tr>
           </tbody>
         </table>
-      </Card>
+      </SCard>
 
       <!-- Quick Actions -->
-      <Card>
+      <SCard>
         <h3 class="text-sm font-semibold text-text-primary mb-3">Quick Actions</h3>
         <div class="flex flex-wrap gap-3">
-          <Button variant="primary" size="sm" to="/snapshots/create">Create Snapshot</Button>
-          <Button variant="outline" size="sm" to="/profiles/create">New Profile</Button>
-          <Button variant="outline" size="sm" to="/storage">View Storage</Button>
+          <SButton variant="primary" size="sm" to="/snapshots/create">Create Snapshot</SButton>
+          <SButton variant="secondary" size="sm" to="/profiles/create">New Profile</SButton>
+          <SButton variant="secondary" size="sm" to="/storage">View Storage</SButton>
         </div>
-      </Card>
+      </SCard>
     </div>
   </div>
 </template>

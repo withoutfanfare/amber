@@ -150,6 +150,91 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
   - Diff displayed in a split-view with colour-coded additions (green) and removals (red)
   - Comparison exportable as Markdown for inclusion in pull request descriptions
 
+### [UX/UI] Add snapshot restore dry-run preview showing schema and data impact
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-21
+- **Status:** pending
+- **Description:** Before committing to a full restore, users should be able to preview what the restore will do — whether the snapshot's schema matches the current database, approximate row count changes per table, and whether any tables in the current database would be lost. This is especially important when restoring snapshots taken before a migration, as the schema may have diverged. The integrity verification item validates the snapshot file is intact; this item validates the restore would produce the expected result.
+- **Acceptance criteria:**
+  - "Preview restore" action available alongside the standard restore button
+  - Preview compares snapshot schema against current database schema (tables, columns, indexes)
+  - Schema differences displayed as a diff: added/removed/modified tables and columns
+  - Approximate row count changes shown per table (snapshot vs current)
+  - Warning displayed if the restore would drop tables that exist in the current database but not in the snapshot
+  - Preview does not modify the database (read-only operation)
+
+### [Quality] Add database tool version compatibility checking before operations
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-21
+- **Status:** pending
+- **Description:** The mysqldump and pg_dump tools have version-specific behaviours — a dump captured with mysqldump 8.0 may produce SQL that fails to import on MySQL 5.7, or uses features not available in the restore environment. Storing the dump tool version and database server version at snapshot creation time, and comparing against the current restore environment's versions, would prevent silent cross-version compatibility issues that produce corrupted restores or cryptic import errors.
+- **Acceptance criteria:**
+  - Snapshot metadata records: dump tool name, dump tool version, database server version at capture time
+  - Before restore, compare recorded versions against current tool and server versions
+  - Warning displayed if major version mismatch detected (e.g. MySQL 8.0 dump restoring to MySQL 5.7)
+  - Warning includes specific compatibility concerns for the detected version combination
+  - User can proceed with restore despite warnings (advisory, not blocking)
+  - Version information displayed on snapshot cards in the list view
+
+### [Feature] Add snapshot export as portable SQL file for cross-tool compatibility
+- **Priority:** P3 (nice-to-have)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-21
+- **Status:** pending
+- **Description:** Snapshots are stored in Amber's internal compressed format, which is efficient for the app's own restore workflow but not portable. Developers sometimes need a plain SQL file to use with other database tools, share with teammates who don't have Amber, seed CI databases, or import into database management GUIs. Exporting a snapshot as a standard uncompressed SQL dump file would make Amber's snapshots interoperable with the wider database tooling ecosystem.
+- **Acceptance criteria:**
+  - "Export as SQL" action available on each snapshot in the list view and detail panel
+  - Export decompresses the snapshot and writes a standard SQL file to a user-selected directory
+  - Exported SQL file is valid for direct import via mysql/psql CLI tools
+  - Export includes a header comment with snapshot metadata (database name, capture date, tool version, Amber snapshot ID)
+  - Progress indicator shown for large snapshots (decompression can be slow)
+  - File saved with a descriptive name (e.g. mydb-2026-03-21-pre-migration.sql)
+
+### [Feature] Add snapshot restore to alternate database for safe data inspection
+- **Priority:** P2 (important)
+- **Size:** M (1-3hrs)
+- **Added:** 2026-03-20
+- **Status:** pending
+- **Description:** Currently, restoring a snapshot overwrites the original database, making it a destructive operation even when the user only wants to inspect old data. Supporting restore-to-alternate-target — a temporary or user-specified database name — would let developers inspect snapshot contents, run queries against historical data, or verify a snapshot's integrity without disrupting their current development state. This is especially valuable after a migration, when developers want to compare pre-migration data with the current state without rolling back.
+- **Acceptance criteria:**
+  - Restore dialog offers "Restore to original" and "Restore to new database" options
+  - "Restore to new database" prompts for a target database name (with auto-suggested name, e.g. mydb_snapshot_20260320)
+  - Alternate restore creates the target database if it doesn't exist
+  - Restored data accessible via the user's normal database tools (mysql, psql CLI or GUI)
+  - Original database untouched during alternate restore
+  - Cleanup action available to drop temporary restore databases when no longer needed
+
+### [UX/UI] Add keyboard shortcuts for common snapshot operations
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-20
+- **Status:** pending
+- **Description:** Every other app in the Tauri portfolio has keyboard shortcuts implemented or planned, but Amber has none. Developers using Amber alongside their editor and terminal need rapid access to core operations — creating snapshots, switching profiles, triggering restores — without reaching for the mouse. Standard keyboard shortcuts would bring Amber's interaction speed in line with the portfolio standard and match the keyboard-driven workflow expectations of its developer audience.
+- **Acceptance criteria:**
+  - Cmd+N creates a new snapshot for the active profile
+  - Cmd+R initiates restore for the selected snapshot (with confirmation)
+  - Cmd+1 through Cmd+9 switches between profiles
+  - Cmd+F focuses the snapshot search/filter input
+  - j/k navigates the snapshot list
+  - All shortcuts documented in a help overlay (Cmd+/)
+  - No conflicts with system-level macOS shortcuts
+
+### [Feature] Add snapshot content browser for inspecting data without restoring
+- **Priority:** P3 (nice-to-have)
+- **Size:** M (1-3hrs)
+- **Added:** 2026-03-20
+- **Status:** pending
+- **Description:** Before committing to a restore, developers sometimes need to inspect the actual data in a snapshot — not just the schema difference (covered by the restore dry-run preview), but table row counts, sample records, and specific values. A read-only content browser that extracts table metadata and sample rows from a compressed snapshot file would let users verify they have the right snapshot without the risk and time cost of a full restore. This is particularly useful when snapshots accumulate and names alone are insufficient to identify the correct one.
+- **Acceptance criteria:**
+  - "Browse contents" action available on each snapshot in the list view
+  - Browser displays table list with row counts extracted from the snapshot
+  - Clicking a table shows the first 50 rows in a scrollable data grid
+  - Content extracted from the compressed snapshot without importing to a live database
+  - Browser is read-only — no modification of snapshot or database state
+  - Works for MySQL and PostgreSQL snapshots (SQLite snapshots use file inspection)
+
 ## Design System Adoption
 
 These items implement the Scooda design system (derived from the Dalil app styleguide) to achieve premium visual uniformity across all Tauri applications. Items are ordered by dependency — foundation must complete before migration, migration before polish.

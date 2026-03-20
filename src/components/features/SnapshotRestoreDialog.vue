@@ -1,8 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
-import FormSelect from '@/components/ui/FormSelect.vue'
-import FormInput from '@/components/ui/FormInput.vue'
+import { SConfirmDialog, SFormField, SSelect, SInput } from '@stuntrocket/ui'
 import type { Snapshot, Profile, SnapshotRestoreOptions } from '@/types'
 
 const props = defineProps<{
@@ -95,7 +93,7 @@ function formatDate(iso: string): string {
 </script>
 
 <template>
-  <ConfirmDialog
+  <SConfirmDialog
     :open="open"
     title="Restore Snapshot"
     message="Choose where to restore this snapshot. This will overwrite the target database."
@@ -103,6 +101,7 @@ function formatDate(iso: string): string {
     :danger="true"
     @confirm="handleConfirm"
     @cancel="$emit('cancel')"
+    @close="$emit('cancel')"
   >
     <template v-if="snapshot" #default>
       <!-- Snapshot metadata -->
@@ -121,12 +120,11 @@ function formatDate(iso: string): string {
 
       <!-- Profile selector -->
       <div class="mb-4" v-if="profileOptions.length > 1">
-        <FormSelect
-          v-model="selectedProfileId"
-          label="Restore to profile"
-          :options="profileOptions"
-          size="sm"
-        />
+        <SFormField label="Restore to profile">
+          <SSelect v-model="selectedProfileId">
+            <option v-for="opt in profileOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+          </SSelect>
+        </SFormField>
       </div>
 
       <!-- Database name override -->
@@ -139,13 +137,9 @@ function formatDate(iso: string): string {
           />
           Override database name
         </label>
-        <FormInput
-          v-if="overrideDbName"
-          v-model="customDbName"
-          label="Target database name"
-          placeholder="Enter database name"
-          size="sm"
-        />
+        <SFormField v-if="overrideDbName" label="Target database name">
+          <SInput v-model="customDbName" placeholder="Enter database name" />
+        </SFormField>
       </div>
 
       <!-- Warning banner -->
@@ -161,5 +155,5 @@ function formatDate(iso: string): string {
         </p>
       </div>
     </template>
-  </ConfirmDialog>
+  </SConfirmDialog>
 </template>

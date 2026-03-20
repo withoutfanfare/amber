@@ -3,17 +3,13 @@ import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useSnapshotStore } from '@/stores/snapshots'
-import { useToast } from '@/composables/useToast'
+import { useToastStack, SCard, SButton, SInput, SConfirmDialog } from '@stuntrocket/ui'
 import PageHeader from '@/components/layout/PageHeader.vue'
-import Card from '@/components/ui/Card.vue'
-import Button from '@/components/ui/Button.vue'
-import FormInput from '@/components/ui/FormInput.vue'
-import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 import StorageBreakdown from '@/components/features/StorageBreakdown.vue'
 import type { StorageInfo } from '@/types'
 
 const snapshotStore = useSnapshotStore()
-const toast = useToast()
+const toast = useToastStack()
 
 const storageInfo = ref<StorageInfo | null>(null)
 const loading = ref(false)
@@ -121,7 +117,7 @@ async function handleDeleteProjectConfirm() {
 
     <div v-else class="space-y-6">
       <!-- Total storage KPI -->
-      <Card v-if="storageInfo">
+      <SCard v-if="storageInfo">
         <div class="flex items-center justify-between">
           <div>
             <p class="text-xs text-text-secondary uppercase tracking-wide">Total Storage Used</p>
@@ -134,7 +130,7 @@ async function handleDeleteProjectConfirm() {
             </p>
           </div>
         </div>
-      </Card>
+      </SCard>
 
       <!-- Per-project breakdown -->
       <StorageBreakdown
@@ -145,34 +141,33 @@ async function handleDeleteProjectConfirm() {
       />
 
       <!-- Pruning controls -->
-      <Card>
+      <SCard>
         <h3 class="text-sm font-semibold text-text-primary mb-4">Prune Old Snapshots</h3>
         <div class="flex items-end gap-3">
           <div class="flex items-center gap-2">
             <span class="text-sm text-text-secondary whitespace-nowrap">Delete snapshots older than</span>
             <div class="w-20">
-              <FormInput
+              <SInput
                 v-model="pruneDays"
                 type="number"
-                size="sm"
               />
             </div>
             <span class="text-sm text-text-secondary">days</span>
           </div>
-          <Button
+          <SButton
             variant="danger"
             size="sm"
             :loading="pruning"
             @click="handlePrune"
           >
             Prune
-          </Button>
+          </SButton>
         </div>
-      </Card>
+      </SCard>
     </div>
 
     <!-- Delete project confirmation -->
-    <ConfirmDialog
+    <SConfirmDialog
       :open="deleteProjectDialogOpen"
       title="Delete Project Snapshots"
       :message="`Are you sure you want to delete all snapshots for &quot;${projectToDelete}&quot;? This action cannot be undone.`"
@@ -180,6 +175,7 @@ async function handleDeleteProjectConfirm() {
       :danger="true"
       @confirm="handleDeleteProjectConfirm"
       @cancel="deleteProjectDialogOpen = false"
+      @close="deleteProjectDialogOpen = false"
     />
   </div>
 </template>

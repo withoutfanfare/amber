@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import Card from '@/components/ui/Card.vue'
-import Button from '@/components/ui/Button.vue'
+import { SCard, SButton } from '@stuntrocket/ui'
 import type { ProjectStorage } from '@/types'
 
 const props = defineProps<{
@@ -26,7 +25,7 @@ function formatSize(bytes: number): string {
 </script>
 
 <template>
-  <Card>
+  <SCard>
     <h3 class="text-sm font-semibold text-text-primary mb-4">Storage by Project</h3>
 
     <div v-if="usage.length === 0" class="text-sm text-text-secondary py-4 text-center">
@@ -44,7 +43,7 @@ function formatSize(bytes: number): string {
             </span>
           </div>
           <div class="flex items-center gap-1">
-            <Button
+            <SButton
               variant="ghost"
               size="sm"
               @click="emit('reveal', item.project)"
@@ -53,15 +52,15 @@ function formatSize(bytes: number): string {
               <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
               </svg>
-            </Button>
-            <Button
+            </SButton>
+            <SButton
               variant="ghost"
               size="sm"
               class="text-danger hover:text-danger"
               @click="emit('deleteProject', item.project)"
             >
               Delete All
-            </Button>
+            </SButton>
           </div>
         </div>
         <div class="h-1.5 w-full overflow-hidden rounded-full bg-surface-raised">
@@ -72,5 +71,5 @@ function formatSize(bytes: number): string {
         </div>
       </div>
     </div>
-  </Card>
+  </SCard>
 </template>
