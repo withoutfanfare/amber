@@ -56,7 +56,7 @@
 - **Items added (Design System Adoption section):**
   - [Foundation] Integrate @stuntrocket/ui shared component library and design tokens (P1, M)
   - [UI Migration] Replace all UI elements with @stuntrocket/ui shared components (P1, XL)
-  - [Polish] Achieve full Scooda styleguide visual conformance (P2, L)
+  - [Polish] Achieve full @stuntrocket/ui styleguide visual conformance (P2, L)
 - **Items archived:** none
 - **Observations:** Added Design System Adoption section with 3 staged items. Amber is unique in the portfolio as a vanilla TypeScript app with no framework — the UI migration may require a Vue 3 adoption or CSS-only consumption of @stuntrocket/ui. This is the most disruptive design adoption across all apps but also the most transformative, as Amber currently has the least visual polish. Foundation → Migration → Polish ordering ensures progressive adoption without blocking functional work on the existing P1 items.
 

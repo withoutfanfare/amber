@@ -248,7 +248,7 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 
 ## Design System Adoption
 
-These items implement the Scooda design system (derived from the Dalil app styleguide) to achieve premium visual uniformity across all Tauri applications. Items are ordered by dependency — foundation must complete before migration, migration before polish.
+These items implement the @stuntrocket/ui design system to achieve premium visual uniformity across all Tauri applications. Items are ordered by dependency — foundation must complete before migration, migration before polish.
 
 ### [Foundation] Integrate @stuntrocket/ui shared component library and design tokens
 - **Priority:** P1 (critical)
@@ -256,14 +256,14 @@ These items implement the Scooda design system (derived from the Dalil app style
 - **Added:** 2026-03-19
 - **Status:** completed
 - **Completed:** 2026-03-20
-- **Description:** Amber currently uses vanilla TypeScript with direct DOM manipulation and no design system. Adopting the Scooda design system requires installing the @stuntrocket/ui package from the local Verdaccio registry, importing the shared design tokens (tokens.css), loading Poppins as the primary font, and configuring the Scooda colour palette, spacing scale, and typography scale. This is the prerequisite for all subsequent design work and will transform the app from a bare-bones prototype appearance to the premium Scooda visual identity.
+- **Description:** Amber currently uses vanilla TypeScript with direct DOM manipulation and no design system. Adopting the @stuntrocket/ui design system requires installing the @stuntrocket/ui package from the local Verdaccio registry, importing the shared design tokens (tokens.css), loading Poppins as the primary font, and configuring the @stuntrocket/ui colour palette, spacing scale, and typography scale. This is the prerequisite for all subsequent design work and will transform the app from a bare-bones prototype appearance to the premium @stuntrocket/ui visual identity.
 - **Acceptance criteria:**
   - .npmrc configured with @stuntrocket:registry=http://localhost:4873
   - @stuntrocket/ui installed as a dependency
-  - Scooda tokens.css imported (colour palette, typography scale, spacing, shadows, border radii)
+  - @stuntrocket/ui tokens.css imported (colour palette, typography scale, spacing, shadows, border radii)
   - Poppins font loaded via Google Fonts or local font files
-  - Tailwind CSS v4 installed and configured with Scooda @theme block
-  - App renders with correct Scooda colour palette and typography in both light and dark modes
+  - Tailwind CSS v4 installed and configured with @stuntrocket/ui @theme block
+  - App renders with correct @stuntrocket/ui colour palette and typography in both light and dark modes
   - Ambient background blobs CSS imported and rendering
 
 ### [UI Migration] Replace all UI elements with @stuntrocket/ui shared components
@@ -272,7 +272,7 @@ These items implement the Scooda design system (derived from the Dalil app style
 - **Added:** 2026-03-19
 - **Status:** pending
 - **Note:** Skipped: too large for autonomous cycle, needs Danny's input.
-- **Description:** Systematically replace all locally-defined UI elements with @stuntrocket/ui equivalents. Since Amber uses vanilla TypeScript rather than Vue, this may require either migrating to Vue 3 (matching the rest of the portfolio) or consuming the CSS-only layer of @stuntrocket/ui with custom rendering. Every button, input, card, badge, modal, and toast must match the Scooda styleguide exactly. The goal is zero bespoke UI primitives.
+- **Description:** Systematically replace all locally-defined UI elements with @stuntrocket/ui equivalents. Since Amber uses vanilla TypeScript rather than Vue, this may require either migrating to Vue 3 (matching the rest of the portfolio) or consuming the CSS-only layer of @stuntrocket/ui with custom rendering. Every button, input, card, badge, modal, and toast must match the @stuntrocket/ui styleguide exactly. The goal is zero bespoke UI primitives.
 - **Acceptance criteria:**
   - All buttons use @stuntrocket/ui Button variants (primary CTA, secondary, icon)
   - All form controls use @stuntrocket/ui Input, Select, Textarea styles
@@ -284,12 +284,12 @@ These items implement the Scooda design system (derived from the Dalil app style
   - No locally-defined UI primitive styles remain
   - Dark mode renders correctly with all shared components
 
-### [Polish] Achieve full Scooda styleguide visual conformance
+### [Polish] Achieve full @stuntrocket/ui styleguide visual conformance
 - **Priority:** P2 (important)
 - **Size:** L (3-8hrs)
 - **Added:** 2026-03-19
 - **Status:** pending
-- **Description:** After component migration, apply the remaining Scooda styleguide specifications that go beyond individual components: ambient background blobs with correct colours and animation timing, custom accent-tinted scrollbars, micro-animations on all interactive elements, macOS native titlebar integration with traffic light spacing, correct z-index layering, and full accessibility compliance (focus rings, skip-to-content, ARIA patterns, reduced motion support). Visual QA against the Dalil reference app to verify conformance.
+- **Description:** After component migration, apply the remaining @stuntrocket/ui styleguide specifications that go beyond individual components: ambient background blobs with correct colours and animation timing, custom accent-tinted scrollbars, micro-animations on all interactive elements, macOS native titlebar integration with traffic light spacing, correct z-index layering, and full accessibility compliance (focus rings, skip-to-content, ARIA patterns, reduced motion support). Visual QA against the Dalil reference app to verify conformance.
 - **Acceptance criteria:**
   - Ambient background blobs rendered with correct colours (accent, violet, cyan) and 20-30s drift animations
   - Custom scrollbars with accent-tinted thumb and gradient overlay
