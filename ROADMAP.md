@@ -158,7 +158,8 @@ These items implement the Scooda design system (derived from the Dalil app style
 - **Priority:** P1 (critical)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-19
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-20
 - **Description:** Amber currently uses vanilla TypeScript with direct DOM manipulation and no design system. Adopting the Scooda design system requires installing the @stuntrocket/ui package from the local Verdaccio registry, importing the shared design tokens (tokens.css), loading Poppins as the primary font, and configuring the Scooda colour palette, spacing scale, and typography scale. This is the prerequisite for all subsequent design work and will transform the app from a bare-bones prototype appearance to the premium Scooda visual identity.
 - **Acceptance criteria:**
   - .npmrc configured with @stuntrocket:registry=http://localhost:4873
@@ -174,6 +175,7 @@ These items implement the Scooda design system (derived from the Dalil app style
 - **Size:** XL (8hrs+)
 - **Added:** 2026-03-19
 - **Status:** pending
+- **Note:** Skipped: too large for autonomous cycle, needs Danny's input.
 - **Description:** Systematically replace all locally-defined UI elements with @stuntrocket/ui equivalents. Since Amber uses vanilla TypeScript rather than Vue, this may require either migrating to Vue 3 (matching the rest of the portfolio) or consuming the CSS-only layer of @stuntrocket/ui with custom rendering. Every button, input, card, badge, modal, and toast must match the Scooda styleguide exactly. The goal is zero bespoke UI primitives.
 - **Acceptance criteria:**
   - All buttons use @stuntrocket/ui Button variants (primary CTA, secondary, icon)

@@ -1,5 +1,15 @@
 # Amber Development Log
 
+## Cycle: 2026-03-20 20:10
+- App: amber
+- Items completed:
+  - [Foundation] Integrate @stuntrocket/ui shared component library and design tokens (P1/M) — installed @stuntrocket/ui v0.5.0 from local Verdaccio registry, replaced bespoke CSS with Scooda tokens.css/base.css/scrollbar.css/ambient.css imports, added Poppins font via Google Fonts, enabled class-based dark mode (.dark on html), migrated all form components to @stuntrocket/ui shared components (SInput, SSelect, SButton, SFormField, STextarea, SEmptyState, SConfirmDialog, Card). Fixed TypeScript errors in number-type input bindings. Amber accent override (#F59E0B) preserved for brand identity.
+- Items attempted but failed: none
+- Branch: feature/scooda-design-tokens
+- Tests passing: yes (cargo test 23/23, vitest 20/20, vue-tsc clean, cargo clippy clean, vite build clean)
+- Build status: pending
+- Notes: Previous incomplete cycle had left uncommitted design system changes on main. This cycle completed the integration properly on a feature branch with .npmrc configured, @stuntrocket/ui added to package.json, vue-eslint-parser added as dev dependency for eslint-plugin-vue compatibility, and all Prettier formatting applied. The P1/XL UI Migration item marked as "Skipped: too large for autonomous cycle, needs Danny's input."
+
 ## Cycle: 2026-03-20 09:00
 - App: amber
 - Items completed:
