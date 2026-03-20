@@ -3,8 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProfileStore } from '@/stores/profiles'
 import { useToastStack } from '@stuntrocket/ui'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import { SButton } from '@stuntrocket/ui'
+import { SButton, SPageHeader } from '@stuntrocket/ui'
 import ProfileForm from '@/components/features/ProfileForm.vue'
 import type { ProfileCreatePayload } from '@/types'
 
@@ -29,7 +28,7 @@ async function handleSubmit(payload: ProfileCreatePayload) {
 
 <template>
   <div>
-    <PageHeader>
+    <SPageHeader>
       <template #prepend>
         <SButton variant="ghost" size="sm" to="/profiles">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -39,7 +38,7 @@ async function handleSubmit(payload: ProfileCreatePayload) {
         </SButton>
         <h1 class="text-lg font-semibold">New Profile</h1>
       </template>
-    </PageHeader>
+    </SPageHeader>
 
     <ProfileForm
       :submitting="submitting"

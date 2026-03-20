@@ -3,8 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProfileStore } from '@/stores/profiles'
 import { useToastStack } from '@stuntrocket/ui'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import { SButton, SEmptyState, SConfirmDialog } from '@stuntrocket/ui'
+import { SButton, SEmptyState, SConfirmDialog, SPageHeader } from '@stuntrocket/ui'
 import ProfileCard from '@/components/features/ProfileCard.vue'
 import type { Profile } from '@/types'
 
@@ -52,7 +51,7 @@ async function handleTest(profile: Profile) {
 
 <template>
   <div>
-    <PageHeader>
+    <SPageHeader>
       <template #prepend>
         <h1 class="text-lg font-semibold">Profiles</h1>
         <p class="text-sm text-text-tertiary">Connection profiles store your database credentials and connection details.</p>
@@ -60,7 +59,7 @@ async function handleTest(profile: Profile) {
       <template #actions>
         <SButton variant="primary" size="sm" to="/profiles/create">New Profile</SButton>
       </template>
-    </PageHeader>
+    </SPageHeader>
 
     <!-- Loading state -->
     <div v-if="profileStore.loading" class="text-sm text-text-secondary py-8 text-center">

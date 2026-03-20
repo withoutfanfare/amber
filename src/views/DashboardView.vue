@@ -4,9 +4,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { useProfileStore } from '@/stores/profiles'
 import { useSnapshotStore } from '@/stores/snapshots'
 import { useRestoreHistoryStore } from '@/stores/restoreHistory'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import { SCard, SButton } from '@stuntrocket/ui'
-import KpiCard from '@/components/features/KpiCard.vue'
+import { SCard, SButton, SKpiCard, SPageHeader } from '@stuntrocket/ui'
 import type { StorageInfo } from '@/types'
 
 const profileStore = useProfileStore()
@@ -74,19 +72,50 @@ function getProfileName(profileId: string): string {
 
 <template>
   <div>
-    <PageHeader>
+    <SPageHeader>
       <template #prepend>
         <h1 class="text-lg font-semibold">Dashboard</h1>
       </template>
-    </PageHeader>
+    </SPageHeader>
 
     <div class="space-y-6 stagger-fade-in">
       <!-- KPI Grid -->
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Profiles" :value="profileStore.profiles.length" icon="database" />
-        <KpiCard label="Snapshots" :value="snapshotStore.snapshots.length" icon="camera" />
-        <KpiCard label="Storage" :value="totalStorage" icon="hard-drive" />
-        <KpiCard label="Last Restore" :value="lastRestore" icon="clock" />
+        <SKpiCard label="Profiles" :value="profileStore.profiles.length">
+          <template #icon>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3" />
+              <path d="M3 5V19A9 3 0 0 0 21 19V5" />
+              <path d="M3 12A9 3 0 0 0 21 12" />
+            </svg>
+          </template>
+        </SKpiCard>
+        <SKpiCard label="Snapshots" :value="snapshotStore.snapshots.length">
+          <template #icon>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
+              <circle cx="12" cy="13" r="3" />
+            </svg>
+          </template>
+        </SKpiCard>
+        <SKpiCard label="Storage" :value="totalStorage">
+          <template #icon>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="12" x2="2" y2="12" />
+              <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+              <line x1="6" y1="16" x2="6.01" y2="16" />
+              <line x1="10" y1="16" x2="10.01" y2="16" />
+            </svg>
+          </template>
+        </SKpiCard>
+        <SKpiCard label="Last Restore" :value="lastRestore">
+          <template #icon>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <polyline points="12 6 12 12 16 14" />
+            </svg>
+          </template>
+        </SKpiCard>
       </div>
 
       <!-- Recent Snapshots -->

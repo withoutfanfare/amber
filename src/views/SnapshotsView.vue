@@ -6,8 +6,7 @@
   import { useProfileStore } from "@/stores/profiles";
   import { useSnapshotStore } from "@/stores/snapshots";
   import { useToastStack } from "@stuntrocket/ui";
-  import PageHeader from "@/components/layout/PageHeader.vue";
-  import { SButton, SFormField, SSelect, SEmptyState, SConfirmDialog } from "@stuntrocket/ui";
+  import { SButton, SFormField, SSelect, SEmptyState, SConfirmDialog, SPageHeader } from "@stuntrocket/ui";
   import SnapshotTable from "@/components/features/SnapshotTable.vue";
   import SnapshotRestoreDialog from "@/components/features/SnapshotRestoreDialog.vue";
   import type { Snapshot, SnapshotRestoreOptions } from "@/types";
@@ -120,7 +119,7 @@
 
 <template>
   <div>
-    <PageHeader>
+    <SPageHeader>
       <template #prepend>
         <h1 class="text-lg font-semibold">Snapshots</h1>
         <p class="text-sm text-text-tertiary">
@@ -130,7 +129,7 @@
       <template #actions>
         <SButton variant="primary" size="sm" to="/snapshots/create">New Snapshot</SButton>
       </template>
-    </PageHeader>
+    </SPageHeader>
 
     <!-- Profile filter -->
     <div class="mb-5 max-w-xs">

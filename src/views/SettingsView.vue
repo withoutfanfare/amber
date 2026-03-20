@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
-import { useToastStack, SCard, SInput } from '@stuntrocket/ui'
-import PageHeader from '@/components/layout/PageHeader.vue'
+import { useToastStack, SCard, SInput, SPageHeader } from '@stuntrocket/ui'
 
 const settingsStore = useSettingsStore()
 const toast = useToastStack()
@@ -46,11 +45,11 @@ watch(autoPruneDays, (val) => {
 
 <template>
   <div>
-    <PageHeader>
+    <SPageHeader>
       <template #prepend>
         <h1 class="text-lg font-semibold">Settings</h1>
       </template>
-    </PageHeader>
+    </SPageHeader>
 
     <div v-if="settingsStore.loading" class="text-sm text-text-secondary py-8 text-center">
       Loading settings&hellip;

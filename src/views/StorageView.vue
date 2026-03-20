@@ -3,8 +3,7 @@ import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { revealItemInDir } from '@tauri-apps/plugin-opener'
 import { useSnapshotStore } from '@/stores/snapshots'
-import { useToastStack, SCard, SButton, SInput, SConfirmDialog } from '@stuntrocket/ui'
-import PageHeader from '@/components/layout/PageHeader.vue'
+import { useToastStack, SCard, SButton, SInput, SConfirmDialog, SPageHeader } from '@stuntrocket/ui'
 import StorageBreakdown from '@/components/features/StorageBreakdown.vue'
 import type { StorageInfo } from '@/types'
 
@@ -103,12 +102,12 @@ async function handleDeleteProjectConfirm() {
 
 <template>
   <div>
-    <PageHeader>
+    <SPageHeader>
       <template #prepend>
         <h1 class="text-lg font-semibold">Storage</h1>
         <p class="text-sm text-text-tertiary">Manage disk space used by your snapshot files.</p>
       </template>
-    </PageHeader>
+    </SPageHeader>
 
     <!-- Loading state -->
     <div v-if="loading" class="text-sm text-text-secondary py-8 text-center">

@@ -4,8 +4,7 @@ import { useRouter } from 'vue-router'
 import { useProfileStore } from '@/stores/profiles'
 import { useSnapshotStore } from '@/stores/snapshots'
 import { useToastStack } from '@stuntrocket/ui'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import { SButton, SFormField, SInput, SSelect, STextarea } from '@stuntrocket/ui'
+import { SButton, SFormField, SInput, SSelect, STextarea, SPageHeader } from '@stuntrocket/ui'
 
 const router = useRouter()
 const profileStore = useProfileStore()
@@ -50,7 +49,7 @@ async function handleSubmit() {
 
 <template>
   <div>
-    <PageHeader>
+    <SPageHeader>
       <template #prepend>
         <SButton variant="ghost" size="sm" to="/snapshots">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -60,7 +59,7 @@ async function handleSubmit() {
         </SButton>
         <h1 class="text-lg font-semibold">Create Snapshot</h1>
       </template>
-    </PageHeader>
+    </SPageHeader>
 
     <form class="max-w-xl space-y-5" @submit.prevent="handleSubmit">
       <SFormField label="Profile">

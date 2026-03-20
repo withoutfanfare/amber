@@ -1,15 +1,14 @@
 <script setup lang="ts">
-import PageHeader from '@/components/layout/PageHeader.vue'
-import { SCard, SBadge } from '@stuntrocket/ui'
+import { SCard, SBadge, SPageHeader } from '@stuntrocket/ui'
 </script>
 
 <template>
   <div>
-    <PageHeader>
+    <SPageHeader>
       <template #prepend>
         <h1 class="text-lg font-semibold">Guide</h1>
       </template>
-    </PageHeader>
+    </SPageHeader>
 
     <div class="space-y-6 stagger-fade-in">
       <!-- Getting Started -->

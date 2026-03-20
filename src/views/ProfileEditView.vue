@@ -3,8 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useProfileStore } from '@/stores/profiles'
 import { useToastStack } from '@stuntrocket/ui'
-import PageHeader from '@/components/layout/PageHeader.vue'
-import { SButton, SConfirmDialog } from '@stuntrocket/ui'
+import { SButton, SConfirmDialog, SPageHeader } from '@stuntrocket/ui'
 import ProfileForm from '@/components/features/ProfileForm.vue'
 import type { ProfileCreatePayload } from '@/types'
 
@@ -57,7 +56,7 @@ async function handleDelete() {
 
 <template>
   <div>
-    <PageHeader>
+    <SPageHeader>
       <template #prepend>
         <SButton variant="ghost" size="sm" to="/profiles">
           <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -77,7 +76,7 @@ async function handleDelete() {
           Delete
         </SButton>
       </template>
-    </PageHeader>
+    </SPageHeader>
 
     <div v-if="!profile" class="py-8 text-center text-sm text-text-secondary">
       Loading profile&hellip;
