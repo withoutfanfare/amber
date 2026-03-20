@@ -4,25 +4,30 @@ import { nextTick } from "vue";
 import SnapshotRestoreDialog from "../SnapshotRestoreDialog.vue";
 import type { Snapshot, Profile } from "@/types";
 
-// Stub ConfirmDialog to just render slots and a confirm button
-const ConfirmDialogStub = {
+// Stub @stuntrocket/ui components to render plain HTML for testing
+const SConfirmDialogStub = {
   template: `<div v-if="open"><slot /><button data-test="confirm" @click="$emit('confirm')">Confirm</button><button data-test="cancel" @click="$emit('cancel')">Cancel</button></div>`,
   props: ["open", "title", "message", "confirmLabel", "danger"],
-  emits: ["confirm", "cancel"],
+  emits: ["confirm", "cancel", "close"],
 };
 
-const FormSelectStub = {
+const SSelectStub = {
   template:
-    '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option v-for="opt in options" :key="opt.value" :value="opt.value">{{ opt.label }}</option></select>',
-  props: ["modelValue", "label", "options", "size"],
+    '<select :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><slot /></select>',
+  props: ["modelValue"],
   emits: ["update:modelValue"],
 };
 
-const FormInputStub = {
+const SInputStub = {
   template:
     '<input type="text" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
-  props: ["modelValue", "label", "placeholder", "size"],
+  props: ["modelValue", "placeholder"],
   emits: ["update:modelValue"],
+};
+
+const SFormFieldStub = {
+  template: "<div><slot /></div>",
+  props: ["label"],
 };
 
 const makeSnapshot = (overrides: Partial<Snapshot> = {}): Snapshot => ({
@@ -77,9 +82,10 @@ function mountDialog(props: Record<string, unknown> = {}) {
     },
     global: {
       stubs: {
-        ConfirmDialog: ConfirmDialogStub,
-        FormSelect: FormSelectStub,
-        FormInput: FormInputStub,
+        SConfirmDialog: SConfirmDialogStub,
+        SSelect: SSelectStub,
+        SInput: SInputStub,
+        SFormField: SFormFieldStub,
       },
     },
   });
