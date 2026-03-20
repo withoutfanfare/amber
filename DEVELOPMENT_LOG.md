@@ -10,5 +10,5 @@
 - Items attempted but failed: none
 - Branch: feature/error-classification-and-snapshot-integrity
 - Tests passing: yes (cargo test 23/23, vitest 20/20, vue-tsc clean, clippy clean)
-- Build status: pending
+- Build status: success
 - Notes: The two P1/L items were already fully implemented in the initial commit but not marked as completed on the roadmap. The two P2/S items were implemented this cycle: connection error classification (classify.rs with 10 unit tests) and snapshot integrity verification (checksum.rs with 5 unit tests, plus frontend integration). Removed duplicate roadmap entry for snapshot integrity in the Pending section.
