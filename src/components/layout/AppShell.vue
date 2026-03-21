@@ -18,11 +18,6 @@
       <div class="ambient-blob blob-3"></div>
     </div>
 
-    <!-- Titlebar drag region -->
-    <div
-      class="titlebar-drag-region fixed top-0 right-0 left-0 z-[9999] h-7 border-b border-border-subtle"
-    ></div>
-
     <!-- Skip link -->
     <a
       href="#main-content"
@@ -32,7 +27,7 @@
     </a>
 
     <!-- Layout -->
-    <div class="flex h-full pt-7" style="position: relative; z-index: 2">
+    <div class="flex h-full" style="position: relative; z-index: 2">
       <AppSidebar />
       <main
         id="main-content"

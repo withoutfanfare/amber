@@ -5,6 +5,7 @@
 @import "@stuntrocket/ui/ambient.css";
 
 @source "../";
+@source "../../node_modules/@stuntrocket/ui";
 
 /* ============================================================
    Amber Accent Overrides
@@ -33,6 +34,22 @@
   --color-warning: #eab308;
   --color-danger: #ef4444;
   --color-info: #38bdf8;
+
+  /* Alpha border tokens (light defaults — dark overrides via .dark in tokens.css) */
+  --color-border-subtle: rgba(0, 0, 0, 0.08);
+  --color-border-default: rgba(0, 0, 0, 0.12);
+  --color-border-strong: rgba(0, 0, 0, 0.18);
+
+  /* Surface state tokens (light defaults — dark overrides via .dark in tokens.css) */
+  --color-surface-hover: rgba(0, 0, 0, 0.04);
+  --color-surface-selected: rgba(100, 120, 140, 0.1);
+
+  /* Status subtle tokens (light defaults — dark overrides via .dark in tokens.css) */
+  --color-accent-subtle: rgba(245, 158, 11, 0.1);
+  --color-success-subtle: rgba(90, 154, 107, 0.1);
+  --color-warning-subtle: rgba(196, 148, 50, 0.1);
+  --color-danger-subtle: rgba(196, 84, 84, 0.1);
+
   --shadow-inset: inset 0 1px 0 color-mix(in srgb, white 4%, transparent);
   --shadow-xl: 0 20px 40px -12px rgba(0, 0, 0, 0.6);
   --shadow-focus: 0 0 0 3px color-mix(in srgb, var(--color-accent) 22%, transparent);
@@ -65,25 +82,29 @@
    Amber Blob Colour Overrides
    ============================================================ */
 
+.dark .ambient-blob {
+  opacity: 0.04;
+}
+
 .blob-1 {
-  width: 800px;
-  height: 800px;
+  width: 600px;
+  height: 600px;
   top: -25%;
   right: -10%;
   background: var(--color-accent);
 }
 
 .blob-2 {
-  width: 700px;
-  height: 700px;
+  width: 500px;
+  height: 500px;
   bottom: -20%;
   left: -10%;
   background: #d97706;
 }
 
 .blob-3 {
-  width: 600px;
-  height: 600px;
+  width: 400px;
+  height: 400px;
   top: 50%;
   right: 35%;
   left: auto;
@@ -91,15 +112,34 @@
 }
 
 /* ============================================================
+   Form Controls
+   ============================================================ */
+
+.ui-select {
+  width: 100%;
+}
+
+/* ============================================================
    Card / Glass Panel
    ============================================================ */
 
-.card {
+.card,
+.card-glass {
   background: color-mix(in srgb, #0e0e0e 42%, transparent);
   backdrop-filter: blur(24px) saturate(1.4);
   -webkit-backdrop-filter: blur(24px) saturate(1.4);
   border: 1px solid color-mix(in srgb, white 4%, transparent);
   box-shadow: var(--shadow-inset);
+}
+
+.card-glass-interactive {
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+.card-glass-interactive:hover {
+  border-color: color-mix(in srgb, white 8%, transparent);
+  background: color-mix(in srgb, #0e0e0e 50%, transparent);
 }
 
 .card-inset {
@@ -125,9 +165,6 @@
    ============================================================ */
 
 .page-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
   background: color-mix(in srgb, var(--color-surface-base) 60%, transparent);
   backdrop-filter: blur(24px) saturate(1.4);
   -webkit-backdrop-filter: blur(24px) saturate(1.4);

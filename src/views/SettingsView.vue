@@ -139,42 +139,43 @@
       Loading settings&hellip;
     </div>
 
-    <div v-else class="max-w-xl space-y-6">
-      <!-- Snapshot directory -->
-      <SCard>
-        <h3 class="mb-3 text-sm font-semibold text-text-primary">Snapshot Directory</h3>
-        <p class="mb-1 text-sm text-text-secondary">Snapshots are stored at:</p>
-        <p
-          class="rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm text-text-primary"
-        >
-          {{ snapshotDir }}
-        </p>
-      </SCard>
+    <div v-else class="space-y-6">
+      <!-- Top row: Snapshot directory + Auto-prune -->
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SCard>
+          <h3 class="mb-3 text-sm font-semibold text-text-primary">Snapshot Directory</h3>
+          <p class="mb-1 text-sm text-text-secondary">Snapshots are stored at:</p>
+          <p
+            class="rounded-lg border border-border-subtle bg-surface-raised px-3 py-2 font-mono text-sm text-text-primary"
+          >
+            {{ snapshotDir }}
+          </p>
+        </SCard>
 
-      <!-- Auto-prune settings -->
-      <SCard>
-        <h3 class="mb-3 text-sm font-semibold text-text-primary">Auto-Prune</h3>
-        <div class="space-y-3">
-          <label class="flex cursor-pointer items-center gap-2">
-            <input
-              v-model="autoPruneEnabled"
-              type="checkbox"
-              class="h-4 w-4 rounded border-border accent-accent"
-            />
-            <span class="text-sm text-text-secondary">Automatically delete old snapshots</span>
-          </label>
+        <SCard>
+          <h3 class="mb-3 text-sm font-semibold text-text-primary">Auto-Prune</h3>
+          <div class="space-y-3">
+            <label class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="autoPruneEnabled"
+                type="checkbox"
+                class="h-4 w-4 rounded border-border accent-accent"
+              />
+              <span class="text-sm text-text-secondary">Automatically delete old snapshots</span>
+            </label>
 
-          <div v-if="autoPruneEnabled" class="flex items-center gap-2 pl-6">
-            <span class="text-sm text-text-secondary">Delete snapshots older than</span>
-            <div class="w-20">
-              <SInput v-model="autoPruneDays" type="number" />
+            <div v-if="autoPruneEnabled" class="flex items-center gap-2 pl-6">
+              <span class="text-sm text-text-secondary">Delete snapshots older than</span>
+              <div class="w-20">
+                <SInput v-model="autoPruneDays" type="number" />
+              </div>
+              <span class="text-sm text-text-secondary">days</span>
             </div>
-            <span class="text-sm text-text-secondary">days</span>
           </div>
-        </div>
-      </SCard>
+        </SCard>
+      </div>
 
-      <!-- Retention policies -->
+      <!-- Retention policies — full width -->
       <SCard>
         <h3 class="mb-3 text-sm font-semibold text-text-primary">Retention Policies</h3>
         <p class="mb-4 text-sm text-text-secondary">
@@ -182,7 +183,7 @@
           protected from auto-cleanup.
         </p>
 
-        <SFormField label="Profile" class="mb-4">
+        <SFormField label="Profile" class="mb-4 max-w-sm">
           <SSelect v-model="selectedRetentionProfile">
             <option value="" disabled>Select a profile&hellip;</option>
             <option v-for="opt in profileOptions" :key="opt.value" :value="opt.value">
@@ -237,24 +238,25 @@
         </div>
       </SCard>
 
-      <!-- Compression -->
-      <SCard>
-        <h3 class="mb-3 text-sm font-semibold text-text-primary">Compression</h3>
-        <p class="text-sm text-text-secondary">
-          Compression level: <span class="font-medium text-text-primary">Default (gzip)</span>
-        </p>
-      </SCard>
+      <!-- Bottom row: Compression + Database Tools -->
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <SCard>
+          <h3 class="mb-3 text-sm font-semibold text-text-primary">Compression</h3>
+          <p class="text-sm text-text-secondary">
+            Compression level: <span class="font-medium text-text-primary">Default (gzip)</span>
+          </p>
+        </SCard>
 
-      <!-- Setup wizard -->
-      <SCard>
-        <h3 class="mb-3 text-sm font-semibold text-text-primary">Database Tools</h3>
-        <p class="mb-3 text-sm text-text-secondary">
-          Manage database tool paths and verify tool availability.
-        </p>
-        <SButton variant="secondary" size="sm" @click="router.push('/setup')">
-          Run Setup Wizard
-        </SButton>
-      </SCard>
+        <SCard>
+          <h3 class="mb-3 text-sm font-semibold text-text-primary">Database Tools</h3>
+          <p class="mb-3 text-sm text-text-secondary">
+            Manage database tool paths and verify tool availability.
+          </p>
+          <SButton variant="secondary" size="sm" @click="router.push('/setup')">
+            Run Setup Wizard
+          </SButton>
+        </SCard>
+      </div>
     </div>
   </div>
 </template>
