@@ -201,6 +201,20 @@ export interface ExportResult {
   sizeBytes: number;
 }
 
+export interface SnapshotContentTable {
+  tableName: string;
+  columns: string[];
+  rowCount: number;
+  sampleRows: string[][];
+}
+
+export interface SnapshotContent {
+  snapshotName: string;
+  dbType: string;
+  tables: SnapshotContentTable[];
+  totalRows: number;
+}
+
 export type SnapshotProgress =
   | { event: "started"; data: { operation: string; profileName: string } }
   | { event: "phase"; data: { phase: string; message: string } }

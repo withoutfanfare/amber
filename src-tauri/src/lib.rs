@@ -93,6 +93,8 @@ pub fn run() {
             commands::snapshot_check_version_compatibility,
             // SQL export
             commands::snapshot_export_sql,
+            // Content browser
+            commands::snapshot_browse_content,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

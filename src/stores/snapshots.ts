@@ -13,6 +13,7 @@ import type {
   RestorePreview,
   VersionCompatibility,
   ExportResult,
+  SnapshotContent,
 } from "@/types";
 import { useRestoreHistoryStore } from "./restoreHistory";
 
@@ -256,6 +257,10 @@ export const useSnapshotStore = defineStore("snapshots", () => {
     return await invoke<ExportResult>("snapshot_export_sql", { snapshotId, outputDir });
   }
 
+  async function browseContent(snapshotId: string): Promise<SnapshotContent> {
+    return await invoke<SnapshotContent>("snapshot_browse_content", { snapshotId });
+  }
+
   return {
     snapshots,
     loading,
@@ -285,5 +290,6 @@ export const useSnapshotStore = defineStore("snapshots", () => {
     restorePreview,
     checkVersionCompatibility,
     exportSql,
+    browseContent,
   };
 });

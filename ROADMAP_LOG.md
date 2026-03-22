@@ -1,5 +1,11 @@
 # Amber Roadmap Log
 
+## Cycle: 2026-03-22 09:00
+- **Items added:**
+  - [Feature] Add scheduled automatic snapshots with configurable intervals (P2, M)
+- **Items archived:** none
+- **Observations:** Amber has 3 pending functional items + 2 design system = 5 total pending, well under the rebalancing threshold. The two existing functional items are both P3 (pre-migration auto-capture, content browser). Added a P2 scheduled snapshot item to fill the gap — pre-migration capture is event-driven (detects migration commands), but developers also need a time-based safety net that runs without manual intervention. Scheduled snapshots protect against the many risky operations that aren't formal migrations: manual schema edits, bulk data imports, seed script runs. This is the only new functional P2 item in Amber's pending queue, making it a clear next target after the design system work. The app is feature-rich with 16+ completed items across all categories.
+
 ## Cycle: 2026-03-20 12:50
 - **Items added:** none
 - **Items completed:**

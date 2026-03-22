@@ -20,6 +20,7 @@
     compare: [id: string];
     preview: [id: string];
     versionCheck: [id: string];
+    browse: [id: string];
   }>();
 
   type SortField = "name" | "createdAt" | "sizeBytes";
@@ -261,6 +262,14 @@
             </td>
             <td class="px-3 py-3 text-right">
               <div class="flex items-center justify-end gap-1">
+                <SButton
+                  variant="ghost"
+                  size="sm"
+                  title="Browse snapshot contents"
+                  @click="emit('browse', snapshot.id)"
+                >
+                  Browse
+                </SButton>
                 <SButton
                   variant="ghost"
                   size="sm"
