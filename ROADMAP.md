@@ -236,7 +236,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P3 (nice-to-have)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-20
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-22
 - **Description:** Before committing to a restore, developers sometimes need to inspect the actual data in a snapshot — not just the schema difference (covered by the restore dry-run preview), but table row counts, sample records, and specific values. A read-only content browser that extracts table metadata and sample rows from a compressed snapshot file would let users verify they have the right snapshot without the risk and time cost of a full restore. This is particularly useful when snapshots accumulate and names alone are insufficient to identify the correct one.
 - **Acceptance criteria:**
   - "Browse contents" action available on each snapshot in the list view

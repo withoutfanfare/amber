@@ -1,5 +1,15 @@
 # Amber Development Log
 
+## Cycle: 2026-03-22 10:00
+- App: amber
+- Items completed:
+  - [Feature] Add snapshot content browser for inspecting data without restoring (P3/M) — Rust command decompresses .sql.gz snapshot, parses CREATE TABLE for schema, MySQL INSERT statements and PostgreSQL COPY blocks for data extraction, returns table list with column names, row counts, and up to 50 sample rows per table. Vue dialog with table list sidebar, column pills, scrollable data grid with row numbers, NULL styling, and truncated cell values with tooltips. Frontend wired via Pinia store browseContent action and SnapshotTable browse emit.
+- Items attempted but failed: none
+- Branch: feature/snapshot-content-browser
+- Tests passing: yes (cargo test, cargo clippy clean, vite build clean)
+- Build status: pending
+- Notes: SQL parsing handles MySQL INSERT INTO with stateful quote/escape/parenthesis tracking and PostgreSQL COPY FROM stdin with tab-separated values and \. terminator. Column names extracted from CREATE TABLE definitions with backtick/quote stripping and constraint keyword filtering. Cell values truncated to 200 chars for display. Pre-commit hook pulled in pre-existing uncommitted changes (ROADMAP.md scheduled snapshots item, package-lock.json) into the feature branch commit.
+
 ## Cycle: 2026-03-20 12:50
 - App: amber
 - Items completed:
