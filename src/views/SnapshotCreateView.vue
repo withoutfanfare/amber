@@ -6,7 +6,7 @@
   import { useToastStack } from "@stuntrocket/ui";
   import { SButton, SFormField, SInput, SSelect, STextarea } from "@stuntrocket/ui";
   import PageHeader from "@/components/layout/PageHeader.vue";
-  import type { SizeEstimation } from "@/types";
+  import type { SizeEstimation, DiskSpaceInfo } from "@/types";
 
   const router = useRouter();
   const profileStore = useProfileStore();
@@ -19,6 +19,8 @@
   const tagsInput = ref("");
   const sizeEstimation = ref<SizeEstimation | null>(null);
   const estimating = ref(false);
+  const diskSpace = ref<DiskSpaceInfo | null>(null);
+  const operationBusy = ref(false);
 
   const profileOptions = computed(() =>
     profileStore.profiles.map((p) => ({
@@ -35,24 +37,44 @@
     snapshotStore.fetchAllTags();
   });
 
+  async function runEstimation(profileId: string) {
+    estimating.value = true;
+    sizeEstimation.value = null;
+    diskSpace.value = null;
+    operationBusy.value = false;
+    try {
+      // Check if profile is busy
+      const opStatus = await profileStore.checkOperationStatus(profileId);
+      operationBusy.value = opStatus.busy;
+
+      sizeEstimation.value = await snapshotStore.estimateSize(profileId);
+      // Run disk space check with estimated compressed size
+      if (sizeEstimation.value) {
+        try {
+          diskSpace.value = await profileStore.checkDiskSpace(
+            sizeEstimation.value.estimatedCompressedBytes,
+          );
+        } catch {
+          diskSpace.value = null;
+        }
+      }
+    } catch {
+      sizeEstimation.value = null;
+    } finally {
+      estimating.value = false;
+    }
+  }
+
   // Estimate size when profile changes
   watch(
     selectedProfileId,
     async (newId) => {
       if (!newId) {
         sizeEstimation.value = null;
+        diskSpace.value = null;
         return;
       }
-      estimating.value = true;
-      sizeEstimation.value = null;
-      try {
-        sizeEstimation.value = await snapshotStore.estimateSize(newId);
-      } catch {
-        // Non-critical — hide estimation if it fails
-        sizeEstimation.value = null;
-      } finally {
-        estimating.value = false;
-      }
+      await runEstimation(newId);
     },
     { immediate: false },
   );
@@ -60,14 +82,7 @@
   // Trigger initial estimation
   onMounted(async () => {
     if (selectedProfileId.value) {
-      estimating.value = true;
-      try {
-        sizeEstimation.value = await snapshotStore.estimateSize(selectedProfileId.value);
-      } catch {
-        sizeEstimation.value = null;
-      } finally {
-        estimating.value = false;
-      }
+      await runEstimation(selectedProfileId.value);
     }
   });
 
@@ -166,6 +181,62 @@
         </p>
       </div>
 
+      <!-- Disk space warning -->
+      <div
+        v-if="diskSpace && !diskSpace.sufficient"
+        class="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/5 px-3 py-2 text-sm"
+      >
+        <svg
+          class="mt-0.5 h-4 w-4 shrink-0 text-danger"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+          <line x1="12" y1="9" x2="12" y2="13" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <div>
+          <p class="font-medium text-danger">Insufficient disk space</p>
+          <p class="text-xs text-text-secondary">{{ diskSpace.message }}</p>
+        </div>
+      </div>
+      <div
+        v-else-if="diskSpace && diskSpace.sufficient"
+        class="flex items-center gap-2 rounded-lg bg-success/5 px-3 py-2 text-xs text-success"
+      >
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M20 6 9 17l-5-5" />
+        </svg>
+        {{ formatSize(diskSpace.availableBytes) }} available
+      </div>
+
+      <!-- Operation in progress warning -->
+      <div
+        v-if="operationBusy"
+        class="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm"
+      >
+        <svg
+          class="mt-0.5 h-4 w-4 shrink-0 animate-spin text-warning"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
+          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+        </svg>
+        <div>
+          <p class="font-medium text-warning">Operation in progress</p>
+          <p class="text-xs text-text-secondary">
+            Another snapshot or restore operation is running on this profile. Please wait for it to
+            finish before creating a new snapshot.
+          </p>
+        </div>
+      </div>
+
       <SFormField label="Snapshot Name">
         <SInput v-model="name" placeholder="before-migration-v2" />
       </SFormField>
@@ -219,7 +290,7 @@
           variant="primary"
           size="md"
           :loading="snapshotStore.creating"
-          :disabled="!selectedProfileId || !name.trim()"
+          :disabled="!selectedProfileId || !name.trim() || (diskSpace && !diskSpace.sufficient) || operationBusy"
         >
           Create Snapshot
         </SButton>

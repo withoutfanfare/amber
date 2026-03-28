@@ -40,6 +40,12 @@ pub enum DsmError {
         snapshot_type: String,
         profile_type: String,
     },
+
+    #[error("Operation in progress on this profile: {operation}")]
+    OperationInProgress { operation: String },
+
+    #[error("Insufficient disk space: {message}")]
+    InsufficientDiskSpace { message: String },
 }
 
 /// Structured JSON payload sent to the frontend for all errors.
@@ -68,6 +74,8 @@ impl Serialize for DsmError {
             Self::ProfileNotFound(_) => "profileNotFound",
             Self::SnapshotNotFound(_) => "snapshotNotFound",
             Self::DbTypeMismatch { .. } => "dbTypeMismatch",
+            Self::OperationInProgress { .. } => "operationInProgress",
+            Self::InsufficientDiskSpace { .. } => "insufficientDiskSpace",
         };
 
         ErrorPayload {
