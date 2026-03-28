@@ -1,5 +1,91 @@
 # Amber Roadmap Log
 
+## Cycle: 2026-03-25 06:00
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Amber at 15 pending (13 functional + 2 design system) — at the rebalancing threshold. No additions warranted; category coverage is complete across Features, UX/UI, Performance, Quality, Distribution, and Innovation. No stale items (all added within 6 days). Scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest development pair. The concurrent operation guard (P2, S) is a quick safety win worth prioritising alongside them. Twelve completed items remain misplaced under the "Pending" heading — structural cleanup recommended.
+
+## Cycle: 2026-03-24 05:00
+- **Items added:**
+  - [Quality] Add operation history log recording all snapshot, restore, and cleanup actions with timestamps for audit trail and debugging (P3, S)
+- **Items archived:** none
+- **Observations:** Amber at 14 pending (12 functional + 2 design system). Added one Quality item filling an observability gap: as automated features (scheduled snapshots, pre-restore safety snapshots, retention cleanup) progress, operations will happen without direct user initiation and need an audit trail for debugging. The operation log provides the accountability layer that autonomous database operations require. Scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest development pair. No stale items. Twelve completed items remain under the "Pending" heading — structural cleanup recommended.
+
+## Cycle: 2026-03-24 23:30
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Amber at 15 pending (13 functional + 2 design system) — at the rebalancing threshold. Category coverage is complete across Features, UX/UI, Performance, Quality, Distribution, and Innovation. No stale items (all added within 6 days). Scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest development pair for transforming Amber into a proactive database guardian. Twelve completed items remain misplaced under the "Pending" heading — structural cleanup recommended.
+
+## Cycle: 2026-03-25 01:00
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Amber at 15 pending (13 functional + 2 design system) — at the rebalancing threshold. No additions warranted. Scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest development pair. The auto-updater (P2, M) aligns with the portfolio-wide distribution pattern. Twelve completed items remain misplaced under the "Pending" heading — structural cleanup would improve readability. No stale items.
+
+## Cycle: 2026-03-24 23:00
+- **Items added:**
+  - [UX/UI] Add native macOS notification for completed long-running snapshot and restore operations (P3, S)
+- **Items archived:** none
+- **Observations:** Amber has 13 pending functional items + 2 design system = 15 total — at the rebalancing threshold. Added one UX/UI item addressing a real workflow gap: users switching away during long dump/restore operations have no way to know when the operation completes. Native notifications close this feedback loop with minimal implementation effort. The concurrent operation guard (P2, S) and scheduled snapshots (P2, M) remain the strongest development pair. No stale items. Next cycle should consider archiving lower-priority items if any new additions are needed.
+
+## Cycle: 2026-03-24 21:00
+- **Items added:**
+  - [Quality] Add concurrent operation guard preventing simultaneous snapshot and restore operations on the same profile (P2, S)
+- **Items archived:** none
+- **Observations:** Amber has 12 pending functional items + 2 design system = 14 total — approaching the 15-item rebalancing threshold. Added one Quality item addressing a data safety gap — no concurrency guard exists for simultaneous operations on the same profile, which could corrupt database state. This is a small but critical safety feature that complements existing integrity checks. No stale items (all added within the last 5 days). Scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest development pair.
+
+## Cycle: 2026-03-24 18:00
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Amber has 11 pending functional items + 2 design system = 13 total — well below the rebalancing threshold. No additions warranted — the roadmap is comprehensive across all categories and already received 1 item earlier today (pre-restore safety snapshot). Scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest development pair. The auto-updater (P2, M) continues to align with the portfolio-wide distribution pattern.
+
+## Cycle: 2026-03-24 15:00
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Amber has 11 pending functional items + 2 design system = 13 total — approaching the 15-item threshold. No additions warranted — the roadmap is comprehensive across all categories. Twelve completed items remain under the "Pending" heading rather than the "Completed" section — an organisational inconsistency noted in previous cycles. The scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest pair for transforming Amber from a manual tool into a proactive, always-running database guardian. The auto-updater (P2, M) aligns with the portfolio-wide distribution pattern.
+
+## Cycle: 2026-03-24 09:00
+- **Items added:**
+  - [Quality] Add automatic pre-restore safety snapshot capturing current database state before any restore operation (P2, S)
+- **Items archived:** none
+- **Observations:** Amber has 12 pending items (10 functional + 2 design system) — approaching the 15-item threshold but still within range. Added one Quality item addressing a data safety gap — restoring a snapshot currently overwrites the current database state with no automatic rollback path. A pre-restore safety snapshot is a small but high-impact safety net that leverages existing snapshot infrastructure. Scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest pair for the next development session. The auto-updater (P2, M) continues to align with the portfolio-wide distribution pattern.
+
+## Cycle: 2026-03-23 21:00
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Amber has 9 pending functional items + 2 design system = 11 total, well below the 15-item threshold. No additions warranted — the roadmap is comprehensive across all categories including the recently added auto-updater (Distribution). The scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest pair for the next build session. Pre-migration auto-capture (P3, M) remains the highest-differentiation feature.
+
+## Cycle: 2026-03-23 15:00
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Amber has 8 functional pending items + 2 design system = 10 total — healthy and well below the 15-item threshold. No additions warranted this cycle. The roadmap is comprehensive across all categories. Twelve completed items remain under the "Pending" heading rather than the "Completed" section — an organisational inconsistency that should be corrected during the next development session. The scheduled snapshots (P2, M) and connection health monitoring (P2, S) remain the strongest pair for the next build session — together they transform Amber from a manual tool into a proactive, always-running database guardian. The auto-updater (P2, M) aligns with the portfolio-wide distribution pattern (Grove, Fuse, Drift all have similar items pending or planned). Pre-migration auto-capture (P3, M) remains the highest-differentiation feature for a database snapshot tool.
+
+## Cycle: 2026-03-23 09:00
+- **Items added:**
+  - [Distribution] Add Tauri auto-updater with release notes display for seamless version delivery (P2, M)
+- **Items archived:** none
+- **Observations:** Added one item filling the Distribution category gap — Amber had no pending Distribution items after the first-run setup wizard was completed. The auto-updater aligns with the same items planned for Grove and Fuse, establishing a portfolio-wide update mechanism pattern. Amber has 8 functional pending items + 2 design system = 10 total, well within the 15-item threshold. Snapshot content browser was completed since last cycle. The scheduled snapshots item (P2, M) and connection health monitoring (P2, S) form the strongest pair for the next development session — together they make Amber a proactive, always-running guardian rather than a manual backup tool.
+
+## Cycle: 2026-03-23 03:00
+- **Items added:** none
+- **Items archived:** none
+- **Observations:** Amber has 8 pending functional items + 2 design system = 10 total. No items added this cycle — 8 pending functional items is the joint-highest in the portfolio and adding more would risk scope bloat. The snapshot content browser was completed since last cycle (2026-03-22). Several items in the Pending section are marked as completed but remain under that heading — a consistency issue to note but not something this cycle should modify. Pre-migration auto-capture (P3, M) and scheduled snapshots (P2, M) remain the highest-value pending features as they would transform Amber from a manual tool into a proactive guardian. The next cycle should focus on checking for completion progress rather than adding items.
+
+## Cycle: 2026-03-22 21:00
+- **Items added:**
+  - [Feature] Import external SQL dump files as managed snapshots (P3, S)
+  - [Quality] Add disk space pre-flight check before snapshot creation (P2, S)
+  - [UX/UI] Add snapshot name auto-generation with configurable templates (P3, S)
+- **Items archived:** none
+- **Observations:** Amber has 8 pending functional items + 2 design system = 10 total. The three additions address practical friction points in daily snapshot workflows. The disk space check (P2, S) prevents the most frustrating failure mode — running out of space mid-dump producing a corrupted snapshot — and pairs naturally with the existing size estimation feature. External dump import (P3, S) makes Amber the single management point for all database snapshots regardless of origin, valuable for teams where dumps come from CI, colleagues, or other tools. Name auto-generation (P3, S) reduces friction for frequent snapshot creation, especially when combined with the scheduled snapshots item (pending). The snapshot content browser was completed since last cycle. Pre-migration auto-capture (P3, M) and scheduled snapshots (P2, M) remain the highest-value pending features.
+
+## Cycle: 2026-03-22 15:00
+- **Items added:**
+  - [Feature] Add scheduled automatic snapshots on configurable intervals per profile (P2, M)
+  - [UX/UI] Add snapshot calendar view showing capture and restore history over time (P3, S)
+  - [Quality] Add database connection health monitoring with proactive status indicator (P2, S)
+- **Items archived:** none
+- **Observations:** Amber had the fewest pending items in the portfolio (1 functional + 2 design system = 3 total) after the snapshot content browser was completed. The three additions address the next maturity layer: scheduled snapshots (P2, M) automate continuous protection beyond manual and pre-migration captures; connection health monitoring (P2, S) surfaces connectivity issues before they cause operation failures; and the calendar view (P3, S) provides temporal navigation as the snapshot catalogue grows. The scheduled snapshot item extends the existing retention policy infrastructure. Amber is now at 4 pending functional items + 2 design system = 6 total. The pre-migration auto-capture (P3, M) and scheduled snapshots (P2, M) together would make Amber an intelligent, proactive database guardian.
+
 ## Cycle: 2026-03-20 12:50
 - **Items added:** none
 - **Items completed:**
@@ -96,3 +182,8 @@
 - **Items added:** none
 - **Items archived:** none
 - **Observations:** Amber remains at 15 pending items (13 functional + 2 design system) — at the rebalancing threshold. Four completed items (SQLite migration, subprocess execution, error handling, integrity verification) show strong execution velocity. No additions warranted — the roadmap is comprehensive across all categories and adding further items without execution progress would inflate the backlog. The P2 cluster is the largest in the portfolio at 9 items, providing ample execution targets. Recommend starting with keyboard shortcuts (P2, S) as the quickest win, followed by streaming progress (P2, M) and the first-run setup wizard (P2, M) as the pair that delivers the best new-user experience.
+
+## Cycle: 2026-03-24 09:00
+- **Items added:** None
+- **Items archived:** [UX/UI] Snapshot calendar view — visualisation with limited practical impact; list view with filtering covers temporal navigation needs
+- **Observations:** Amber's roadmap is comprehensive with strong coverage across all categories. 13 functional pending items plus 2 design system items sits at the rebalancing threshold. The pre-migration auto-capture and scheduled snapshots (both pending) represent the app's most differentiating unrealised features. Priority focus should be on the concurrent operation guard (P2) and disk space pre-flight check (P2) — both prevent data corruption scenarios that would erode user trust in a database tool.

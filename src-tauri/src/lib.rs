@@ -13,7 +13,8 @@ mod error;
 mod progress;
 mod ssh;
 
-use crate::db::{init_db, AppPaths, DbState};
+use crate::db::{init_db, AppPaths, DbState, OperationLocks};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::Manager;
 
@@ -33,6 +34,7 @@ pub fn run() {
             let conn = init_db(&app_data_dir).expect("failed to initialise database");
 
             app.manage(DbState(Mutex::new(conn)));
+            app.manage(OperationLocks(Mutex::new(HashMap::new())));
             app.manage(AppPaths {
                 data_dir: app_data_dir.clone(),
                 snapshots_dir: app_data_dir.join("snapshots"),
@@ -93,6 +95,12 @@ pub fn run() {
             commands::snapshot_check_version_compatibility,
             // SQL export
             commands::snapshot_export_sql,
+            // Health monitoring
+            commands::profile_health_check,
+            // Disk space
+            commands::check_disk_space,
+            // Operation guard
+            commands::operation_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

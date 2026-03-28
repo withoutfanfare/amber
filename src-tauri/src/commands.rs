@@ -668,16 +668,20 @@ fn load_tags_for_snapshots(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_lines)]
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 pub async fn snapshot_create(
     db: State<'_, DbState>,
     paths: State<'_, AppPaths>,
+    locks: State<'_, crate::db::OperationLocks>,
     profile_id: String,
     name: String,
     note: Option<String>,
     tags: Option<Vec<String>>,
     on_progress: Channel<SnapshotProgress>,
 ) -> Result<Snapshot, DsmError> {
+    // Acquire per-profile operation lock — prevents concurrent snapshot/restore
+    let _op_guard = acquire_profile_lock(&locks, &profile_id, "snapshot")?;
+
     let start = std::time::Instant::now();
     let snapshot_id = uuid::Uuid::new_v4().to_string();
 
@@ -1055,6 +1059,7 @@ pub async fn snapshot_list(
 pub async fn snapshot_restore(
     db: State<'_, DbState>,
     paths: State<'_, AppPaths>,
+    locks: State<'_, crate::db::OperationLocks>,
     snapshot_id: String,
     options: Option<RestoreOptions>,
     on_progress: Channel<SnapshotProgress>,
@@ -1096,6 +1101,13 @@ pub async fn snapshot_restore(
 
         (snap, prof)
     };
+
+    // Acquire per-profile operation lock — prevents concurrent snapshot/restore
+    let effective_profile_id = options
+        .target_profile_id
+        .as_deref()
+        .unwrap_or(&snapshot.profile_id);
+    let _op_guard = acquire_profile_lock(&locks, effective_profile_id, "restore")?;
 
     // Verify snapshot integrity before proceeding with restore
     if let Some(ref expected_checksum) = snapshot.checksum {
@@ -2898,6 +2910,221 @@ pub struct StreamingDumpProgress {
     pub tables_completed: u32,
     pub total_tables: u32,
     pub bytes_processed: u64,
+}
+
+// -- Health Monitoring ---------------------------------------------------------
+
+/// Result of a periodic health check — lightweight version of `ConnectionTestResult`.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HealthCheckResult {
+    pub profile_id: String,
+    pub status: String, // "connected", "unreachable", "unchecked"
+    pub message: String,
+    pub latency_ms: u64,
+    pub checked_at: String,
+}
+
+/// Lightweight health check for a profile. Reuses the same connection test
+/// logic as `profile_test_connection` but returns a simpler result suitable
+/// for periodic polling.
+#[tauri::command]
+pub async fn profile_health_check(
+    db: State<'_, DbState>,
+    paths: State<'_, AppPaths>,
+    id: String,
+) -> Result<HealthCheckResult, DsmError> {
+    let result = profile_test_connection(db, paths, id.clone()).await?;
+    let now = chrono::Utc::now().to_rfc3339();
+    Ok(HealthCheckResult {
+        profile_id: id,
+        status: if result.success {
+            "connected".to_string()
+        } else {
+            "unreachable".to_string()
+        },
+        message: result.message,
+        latency_ms: result.latency_ms,
+        checked_at: now,
+    })
+}
+
+// -- Disk Space Pre-flight Check ----------------------------------------------
+
+/// Information about available disk space on the snapshots volume.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskSpaceInfo {
+    pub available_bytes: u64,
+    pub estimated_bytes: u64,
+    pub sufficient: bool,
+    pub safety_margin: f64,
+    pub message: String,
+}
+
+/// Check whether there is sufficient disk space for a new snapshot.
+///
+/// Compares the estimated snapshot size (with a configurable safety margin,
+/// default 2x) against available space on the volume hosting the snapshots
+/// directory.
+#[tauri::command]
+pub async fn check_disk_space(
+    paths: State<'_, AppPaths>,
+    estimated_bytes: u64,
+    safety_margin: Option<f64>,
+) -> Result<DiskSpaceInfo, DsmError> {
+    let margin = safety_margin.unwrap_or(2.0);
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_precision_loss
+    )]
+    let required = (estimated_bytes as f64 * margin) as u64;
+    let snapshots_dir = paths.snapshots_dir.clone();
+
+    let available = tokio::task::spawn_blocking(move || -> Result<u64, std::io::Error> {
+        get_available_disk_space(&snapshots_dir)
+    })
+    .await
+    .map_err(|e| DsmError::FileSystemError(std::io::Error::other(format!("Disk check failed: {e}"))))?
+    .map_err(DsmError::FileSystemError)?;
+
+    let sufficient = available >= required;
+    let message = if sufficient {
+        format!(
+            "{} available ({} required with {}x safety margin)",
+            format_bytes_short(available),
+            format_bytes_short(required),
+            margin,
+        )
+    } else {
+        format!(
+            "Only {} available but {} required ({}x safety margin). Free up {} to proceed.",
+            format_bytes_short(available),
+            format_bytes_short(required),
+            margin,
+            format_bytes_short(required.saturating_sub(available)),
+        )
+    };
+
+    Ok(DiskSpaceInfo {
+        available_bytes: available,
+        estimated_bytes,
+        sufficient,
+        safety_margin: margin,
+        message,
+    })
+}
+
+/// Get available disk space on the volume containing the given path.
+#[cfg(target_os = "macos")]
+fn get_available_disk_space(path: &std::path::Path) -> Result<u64, std::io::Error> {
+    use std::ffi::CString;
+    use std::mem::MaybeUninit;
+
+    let c_path = CString::new(path.to_string_lossy().as_bytes())
+        .map_err(|e| std::io::Error::other(format!("Invalid path: {e}")))?;
+
+    unsafe {
+        let mut stat = MaybeUninit::<libc::statfs>::uninit();
+        if libc::statfs(c_path.as_ptr(), stat.as_mut_ptr()) != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let stat = stat.assume_init();
+        #[allow(clippy::cast_sign_loss)]
+        Ok(stat.f_bavail * u64::from(stat.f_bsize))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_available_disk_space(_path: &std::path::Path) -> Result<u64, std::io::Error> {
+    // Fallback: report a large value so the check never blocks
+    Ok(u64::MAX)
+}
+
+// -- Concurrent Operation Guard -----------------------------------------------
+
+/// Status of any in-progress operation on a profile.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationStatusResult {
+    pub profile_id: String,
+    pub busy: bool,
+    pub operation: Option<String>,
+}
+
+/// Check whether a profile has an operation in progress.
+#[tauri::command]
+pub async fn operation_status(
+    locks: State<'_, crate::db::OperationLocks>,
+    profile_id: String,
+) -> Result<OperationStatusResult, DsmError> {
+    let map = locks.0.lock().map_err(|e| DsmError::ConnectionError {
+        message: format!("Failed to check operation status: {e}"),
+    })?;
+
+    if let Some(slot) = map.get(&profile_id) {
+        let busy = slot.busy.load(std::sync::atomic::Ordering::Acquire);
+        let operation = if busy {
+            slot.operation.lock().ok().map(|op| op.clone())
+        } else {
+            None
+        };
+        Ok(OperationStatusResult {
+            profile_id,
+            busy,
+            operation,
+        })
+    } else {
+        Ok(OperationStatusResult {
+            profile_id,
+            busy: false,
+            operation: None,
+        })
+    }
+}
+
+/// Acquire a per-profile operation lock. Returns a guard that clears the busy
+/// flag when dropped.
+fn acquire_profile_lock(
+    locks: &crate::db::OperationLocks,
+    profile_id: &str,
+    operation: &str,
+) -> Result<crate::db::ProfileOpGuard, DsmError> {
+    use std::sync::atomic::Ordering;
+
+    let mut map = locks.0.lock().map_err(|e| DsmError::ConnectionError {
+        message: format!("Failed to acquire operation registry: {e}"),
+    })?;
+
+    let slot = map
+        .entry(profile_id.to_string())
+        .or_insert_with(|| {
+            std::sync::Arc::new(crate::db::OperationSlot {
+                busy: std::sync::atomic::AtomicBool::new(false),
+                operation: std::sync::Mutex::new(String::new()),
+            })
+        })
+        .clone();
+
+    // Drop the map lock — we only hold the slot Arc now
+    drop(map);
+
+    // Try to set busy from false → true atomically
+    if slot
+        .busy
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        if let Ok(mut op) = slot.operation.lock() {
+            *op = operation.to_string();
+        }
+        Ok(crate::db::ProfileOpGuard { slot })
+    } else {
+        Err(DsmError::OperationInProgress {
+            operation: "Another operation is already running on this profile".to_string(),
+        })
+    }
 }
 
 #[cfg(test)]

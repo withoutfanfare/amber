@@ -1,5 +1,17 @@
 # Amber Development Log
 
+## Cycle: 2026-03-28 12:00
+- App: amber
+- Items completed:
+  - [Quality] Database connection health monitoring with proactive status indicator (P2/S) — New `profile_health_check` Tauri command reuses existing `profile_test_connection` infrastructure, returning a lightweight `HealthCheckResult` with status (connected/unreachable/unchecked), latency, and timestamp. ProfilesView runs health checks on mount and every 60 seconds. ProfileCard displays a coloured status dot (green/red/grey) with tooltip showing latency or error message, plus an operation-in-progress indicator when the profile is busy.
+  - [Quality] Disk space pre-flight check before snapshot creation (P2/S) — New `check_disk_space` Tauri command uses macOS `statfs` to read available space on the snapshots volume, compares against estimated compressed snapshot size with configurable safety margin (default 2x). SnapshotCreateView runs the check alongside size estimation and displays a warning banner (red) when space is insufficient or a confirmation badge (green) when sufficient. Create button disabled when disk space is insufficient.
+  - [Quality] Concurrent operation guard preventing simultaneous snapshot/restore on same profile (P2/S) — `OperationSlot` with `AtomicBool` busy flag and RAII `ProfileOpGuard` that auto-clears on drop. `OperationLocks` managed state holds per-profile slots. `snapshot_create` and `snapshot_restore` acquire the lock before proceeding; concurrent requests receive `OperationInProgress` error. `operation_status` command lets the frontend check lock state. SnapshotCreateView checks and disables the create button when the profile is busy.
+- Items attempted but failed: none
+- Branch: feature/health-diskcheck-opguard
+- Tests passing: yes (23/23 tests, cargo clippy clean)
+- Build status: pending
+- Notes: Added `libc` dependency for macOS `statfs` call. All three features are backend + frontend, no database migration needed.
+
 ## Cycle: 2026-03-22 10:00
 - App: amber
 - Items completed:
