@@ -9,7 +9,7 @@
 - Items attempted but failed: none
 - Branch: feature/health-diskcheck-opguard
 - Tests passing: yes (23/23 tests, cargo clippy clean)
-- Build status: pending
+- Build status: Rust release build succeeded. Tauri full build failed (pre-existing `vue-router` resolution issue in `@stuntrocket/ui` — not related to this cycle's changes).
 - Notes: Added `libc` dependency for macOS `statfs` call. All three features are backend + frontend, no database migration needed.
 
 ## Cycle: 2026-03-22 10:00
