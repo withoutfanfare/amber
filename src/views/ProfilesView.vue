@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { ref, onMounted } from "vue";
+  import { ref, onMounted, onUnmounted } from "vue";
   import { useRouter } from "vue-router";
   import { useProfileStore } from "@/stores/profiles";
   import { useToastStack } from "@stuntrocket/ui";
@@ -14,9 +14,30 @@
 
   const deleteDialogOpen = ref(false);
   const profileToDelete = ref<Profile | null>(null);
+  let healthInterval: ReturnType<typeof setInterval> | null = null;
 
-  onMounted(() => {
-    profileStore.fetchAll();
+  async function runHealthChecks() {
+    for (const profile of profileStore.profiles) {
+      try {
+        await profileStore.healthCheck(profile.id);
+      } catch {
+        // Non-critical — health check failure is handled in the store
+      }
+    }
+  }
+
+  onMounted(async () => {
+    await profileStore.fetchAll();
+    // Run initial health checks, then repeat every 60 seconds
+    runHealthChecks();
+    healthInterval = setInterval(runHealthChecks, 60_000);
+  });
+
+  onUnmounted(() => {
+    if (healthInterval) {
+      clearInterval(healthInterval);
+      healthInterval = null;
+    }
   });
 
   function handleEdit(profile: Profile) {
@@ -91,6 +112,8 @@
             :key="profile.id"
             :profile="profile"
             :test-result="profileStore.testResults.get(profile.id)"
+            :health-status="profileStore.healthStatuses.get(profile.id)"
+            :operation-status="profileStore.operationStatuses.get(profile.id)"
             @edit="handleEdit(profile)"
             @delete="handleDeleteRequest(profile)"
             @test="handleTest(profile)"

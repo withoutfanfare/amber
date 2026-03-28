@@ -1,7 +1,8 @@
 use rusqlite::Connection;
 use rusqlite_migration::{Migrations, M};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 /// Managed Tauri state wrapping the `SQLite` connection.
 pub struct DbState(pub Mutex<Connection>);
@@ -13,6 +14,31 @@ pub struct AppPaths {
     pub data_dir: PathBuf,
     pub snapshots_dir: PathBuf,
     pub tmp_dir: PathBuf,
+}
+
+/// Tracks whether an operation is in progress for a given profile.
+pub struct OperationSlot {
+    pub busy: std::sync::atomic::AtomicBool,
+    pub operation: Mutex<String>,
+}
+
+/// Per-profile operation lock preventing concurrent snapshot/restore operations.
+pub struct OperationLocks(pub Mutex<HashMap<String, Arc<OperationSlot>>>);
+
+/// RAII guard that clears the busy flag when dropped.
+pub struct ProfileOpGuard {
+    pub(crate) slot: Arc<OperationSlot>,
+}
+
+impl Drop for ProfileOpGuard {
+    fn drop(&mut self) {
+        self.slot
+            .busy
+            .store(false, std::sync::atomic::Ordering::Release);
+        if let Ok(mut op) = self.slot.operation.lock() {
+            op.clear();
+        }
+    }
 }
 
 /// Embedded migrations -- add new `M::up()` entries for schema changes.

@@ -2,11 +2,13 @@
   import { ref, computed } from "vue";
   import { SCard, SBadge, SButton } from "@stuntrocket/ui";
   import ConnectionTestIndicator from "./ConnectionTestIndicator.vue";
-  import type { Profile, ConnectionTestResult } from "@/types";
+  import type { Profile, ConnectionTestResult, HealthCheckResult, OperationStatusResult } from "@/types";
 
   const props = defineProps<{
     profile: Profile;
     testResult?: ConnectionTestResult | null;
+    healthStatus?: HealthCheckResult | null;
+    operationStatus?: OperationStatusResult | null;
   }>();
 
   const emit = defineEmits<{
@@ -16,6 +18,18 @@
   }>();
 
   const testing = ref(false);
+
+  const healthIndicatorColor = computed(() => {
+    if (!props.healthStatus) return "bg-text-tertiary"; // unchecked — grey
+    return props.healthStatus.status === "connected" ? "bg-success" : "bg-danger";
+  });
+
+  const healthTooltip = computed(() => {
+    if (!props.healthStatus) return "Not checked";
+    if (props.healthStatus.status === "connected")
+      return `Connected (${props.healthStatus.latencyMs}ms)`;
+    return props.healthStatus.message;
+  });
 
   const dbBadgeVariant = computed(() => {
     const map: Record<string, "info" | "success" | "warning"> = {
@@ -58,9 +72,17 @@
 <template>
   <SCard :hoverable="true">
     <div class="mb-3 flex items-start justify-between">
-      <div>
-        <p class="text-xs text-text-tertiary">{{ profile.project }}</p>
-        <h3 class="text-lg font-semibold text-text-primary">{{ profile.name }}</h3>
+      <div class="flex items-center gap-2">
+        <!-- Health status dot -->
+        <span
+          class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+          :class="healthIndicatorColor"
+          :title="healthTooltip"
+        />
+        <div>
+          <p class="text-xs text-text-tertiary">{{ profile.project }}</p>
+          <h3 class="text-lg font-semibold text-text-primary">{{ profile.name }}</h3>
+        </div>
       </div>
       <div class="flex items-center gap-1">
         <!-- Edit button -->
@@ -110,6 +132,17 @@
         profile.environment
       }}</SBadge>
       <SBadge v-if="profile.sshEnabled" variant="accent">SSH</SBadge>
+    </div>
+
+    <!-- Operation in progress indicator -->
+    <div
+      v-if="operationStatus?.busy"
+      class="mb-2 flex items-center gap-1.5 rounded bg-warning/10 px-2 py-1 text-xs text-warning"
+    >
+      <svg class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+      </svg>
+      Operation in progress
     </div>
 
     <p class="mb-2 font-mono text-sm text-text-secondary">{{ connectionString }}</p>

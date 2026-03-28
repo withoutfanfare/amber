@@ -201,6 +201,28 @@ export interface ExportResult {
   sizeBytes: number;
 }
 
+export interface HealthCheckResult {
+  profileId: string;
+  status: "connected" | "unreachable" | "unchecked";
+  message: string;
+  latencyMs: number;
+  checkedAt: string;
+}
+
+export interface DiskSpaceInfo {
+  availableBytes: number;
+  estimatedBytes: number;
+  sufficient: boolean;
+  safetyMargin: number;
+  message: string;
+}
+
+export interface OperationStatusResult {
+  profileId: string;
+  busy: boolean;
+  operation: string | null;
+}
+
 export type SnapshotProgress =
   | { event: "started"; data: { operation: string; profileName: string } }
   | { event: "phase"; data: { phase: string; message: string } }

@@ -1,7 +1,15 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
 import { invoke } from '@tauri-apps/api/core'
-import type { Profile, ProfileCreatePayload, ProfileUpdateInput, ConnectionTestResult } from '@/types'
+import type {
+  Profile,
+  ProfileCreatePayload,
+  ProfileUpdateInput,
+  ConnectionTestResult,
+  HealthCheckResult,
+  OperationStatusResult,
+  DiskSpaceInfo,
+} from '@/types'
 
 export const useProfileStore = defineStore('profiles', () => {
   // --- State ---
@@ -10,6 +18,8 @@ export const useProfileStore = defineStore('profiles', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const testResults = ref<Map<string, ConnectionTestResult>>(new Map())
+  const healthStatuses = ref<Map<string, HealthCheckResult>>(new Map())
+  const operationStatuses = ref<Map<string, OperationStatusResult>>(new Map())
 
   // --- Getters ---
   const activeProfile = computed(() =>
@@ -71,13 +81,37 @@ export const useProfileStore = defineStore('profiles', () => {
     return result
   }
 
+  async function healthCheck(id: string): Promise<HealthCheckResult> {
+    const result = await invoke<HealthCheckResult>('profile_health_check', { id })
+    healthStatuses.value.set(id, result)
+    return result
+  }
+
+  async function checkDiskSpace(
+    estimatedBytes: number,
+    safetyMargin?: number,
+  ): Promise<DiskSpaceInfo> {
+    return await invoke<DiskSpaceInfo>('check_disk_space', {
+      estimatedBytes,
+      safetyMargin: safetyMargin ?? null,
+    })
+  }
+
+  async function checkOperationStatus(profileId: string): Promise<OperationStatusResult> {
+    const result = await invoke<OperationStatusResult>('operation_status', { profileId })
+    operationStatuses.value.set(profileId, result)
+    return result
+  }
+
   function setActive(id: string) {
     activeProfileId.value = id
   }
 
   return {
     profiles, activeProfileId, loading, error, testResults,
+    healthStatuses, operationStatuses,
     activeProfile, profilesByProject,
-    fetchAll, create, update, remove, testConnection, setActive,
+    fetchAll, create, update, remove, testConnection,
+    healthCheck, checkDiskSpace, checkOperationStatus, setActive,
   }
 })
