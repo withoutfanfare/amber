@@ -247,6 +247,186 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
   - Browser is read-only — no modification of snapshot or database state
   - Works for MySQL and PostgreSQL snapshots (SQLite snapshots use file inspection)
 
+### [Feature] Add scheduled automatic snapshots on configurable intervals per profile
+- **Priority:** P2 (important)
+- **Size:** M (1-3hrs)
+- **Added:** 2026-03-22
+- **Status:** pending
+- **Description:** Manual and pre-migration snapshots cover deliberate and reactive capture, but many developers want a regular backup cadence that runs without intervention. Configurable per-profile schedules (hourly, every 6 hours, daily) with retention integration would automate the most basic protection need — especially for actively developed databases where schema changes happen frequently between manual snapshots. This extends the retention policy infrastructure (already completed) and complements the pre-migration auto-capture item by providing continuous rather than event-driven protection.
+- **Acceptance criteria:**
+  - Schedule configurable per profile: disabled, hourly, every 6 hours, daily, weekly
+  - Scheduled snapshots created automatically when the app is running and the database is reachable
+  - Scheduled snapshots tagged with "[auto] scheduled" and the schedule interval for easy identification
+  - Retention policies apply to scheduled snapshots (configurable separately from manual snapshots)
+  - Schedule status visible on profile cards: next scheduled snapshot time, last automatic snapshot time
+  - Missed scheduled snapshots (app was closed) noted on next launch without creating a backlog of catches
+
+### [Quality] Add database connection health monitoring with proactive status indicator
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-22
+- **Status:** completed
+- **Completed:** 2026-03-28
+- **Description:** During extended sessions, database connections can become stale — the server may be restarted, a Docker container recycled, or a network change may interrupt connectivity. The app currently discovers connection failures only when a snapshot or restore operation is attempted, producing an error at the worst possible moment. A periodic lightweight health check (connection ping) with a persistent status indicator on each profile card would give users confidence that their profiles are operational before starting an operation, and surface connectivity issues early enough to fix them proactively.
+- **Acceptance criteria:**
+  - Profile cards display a connection status indicator: connected (green), unreachable (red), unchecked (grey)
+  - Health check runs a lightweight query (e.g. SELECT 1) on a configurable interval (default: 60 seconds) for the active profile
+  - Non-active profiles checked less frequently (every 5 minutes) or on-demand only
+  - Status change triggers a subtle toast notification (e.g. "MySQL on localhost became unreachable")
+  - Health check does not interfere with active snapshot or restore operations
+  - Check interval configurable in settings; can be disabled entirely
+
+### [Feature] Add external SQL dump file import as managed snapshots
+- **Priority:** P3 (nice-to-have)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-22
+- **Status:** pending
+- **Description:** Users may have existing database dump files created by other tools, teammates, or CI pipelines that they want to manage through Amber — browsing, comparing, restoring, or exporting them alongside Amber-created snapshots. Currently Amber only manages snapshots it creates itself. Importing an external `.sql` or compressed dump file, extracting metadata (database name, table list, approximate size), and registering it as a snapshot in the catalogue would make Amber the single management point for all database snapshots regardless of origin.
+- **Acceptance criteria:**
+  - "Import snapshot" action available from the snapshot list toolbar
+  - Accepts `.sql`, `.sql.gz`, and `.sql.zst` files via file picker or drag-and-drop
+  - Metadata extracted on import: database type (MySQL/PostgreSQL inferred from SQL dialect), table count, approximate row counts
+  - Imported snapshot registered in SQLite metadata with source marked as "imported" (distinct from "created")
+  - SHA-256 checksum computed and stored at import time (matching existing integrity verification)
+  - Imported snapshots support all existing operations: restore, export, compare, browse contents
+
+### [Quality] Add disk space pre-flight check before snapshot creation
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-22
+- **Status:** completed
+- **Completed:** 2026-03-28
+- **Description:** Large database dumps can produce files that exceed available disk space, resulting in incomplete or corrupted snapshot files and wasted time. The snapshot size estimation feature (completed) tells users how large a snapshot will be, but does not compare that estimate against available disk space. A pre-flight check that compares the estimated snapshot size against free disk space on the target volume — and blocks creation with a clear warning when space is insufficient — would prevent the most frustrating failure mode in a database snapshot tool.
+- **Acceptance criteria:**
+  - Available disk space checked before snapshot creation begins
+  - Estimated snapshot size (from the existing estimation feature) compared against available space with a safety margin (default: 2x estimated size)
+  - Creation blocked with clear warning if insufficient space, showing: estimated size, available space, deficit
+  - Warning includes the target snapshot directory path for clarity
+  - Safety margin configurable in settings (1x for confident users, 3x for cautious)
+  - Check completes within 500ms (single filesystem stat call)
+
+### [UX/UI] Add snapshot name auto-generation with configurable templates
+- **Priority:** P3 (nice-to-have)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-22
+- **Status:** pending
+- **Description:** When creating snapshots frequently — especially with scheduled automatic snapshots (pending) or during active development sessions — manually naming each snapshot becomes tedious and inconsistent. A configurable name template with dynamic tokens (database name, date, time, profile name, sequential counter) that auto-populates the snapshot name field would reduce creation friction and produce consistently organised snapshot catalogues. Users could still edit the generated name before confirming.
+- **Acceptance criteria:**
+  - Default name template: `{database}-{date}-{time}` producing names like `mydb-2026-03-22-14-30`
+  - Available tokens: `{database}`, `{profile}`, `{date}`, `{time}`, `{datetime}`, `{counter}`, `{type}` (manual/scheduled/pre-migration)
+  - Template configurable per profile in profile settings
+  - Generated name pre-populated in the snapshot creation dialog (editable before confirming)
+  - Scheduled and pre-migration snapshots use the template automatically (no manual naming step)
+  - Duplicate name detection with auto-incrementing suffix if a name collision occurs
+
+### [Distribution] Add Tauri auto-updater with release notes display for seamless version delivery
+- **Priority:** P2 (important)
+- **Size:** M (1-3hrs)
+- **Added:** 2026-03-23
+- **Status:** pending
+- **Description:** Amber has no update mechanism — users must manually discover, download, and replace the application binary to get new versions. As snapshot management features mature (retention policies, scheduled snapshots, schema comparison), delivering fixes and improvements seamlessly becomes critical. Tauri's built-in updater plugin with a release notes panel would ensure users always run the latest version without manual intervention, matching the auto-updater items already planned for Grove and Fuse. This is the only Distribution-category gap in Amber's pending roadmap.
+- **Acceptance criteria:**
+  - Tauri updater plugin configured with update endpoint and code signing
+  - Update check on app launch with non-intrusive notification banner (not modal)
+  - Release notes displayed in a panel before the user confirms installation
+  - "Install now" and "Remind me later" options; deferred updates install on next launch
+  - Current version and last update check timestamp visible in settings
+  - Update progress indicator during download and installation
+
+### [Quality] Add interrupted snapshot cleanup detecting and removing orphaned partial dump files on launch
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-23
+- **Status:** pending
+- **Description:** If the app crashes or is force-quit during a database dump, partial snapshot files remain on disk without corresponding metadata entries in the SQLite database — consuming space invisibly and potentially confusing users who find unmanaged files in the snapshot directory. The integrity verification item (completed) validates existing snapshots, but does not detect orphaned files that were never registered. Scanning the snapshot directory on launch for files not referenced by any metadata record and offering cleanup would prevent silent disk bloat from failed operations.
+- **Acceptance criteria:**
+  - Snapshot directory scanned on app launch for files not referenced by any snapshot metadata record
+  - Orphaned files listed with size, creation date, and inferred database type (from filename or header)
+  - User prompted with cleanup options: delete all orphaned files, review individually, or dismiss
+  - Cleanup action logs deleted files for audit (not shown to user unless requested)
+  - Scan completes within 500ms for directories with up to 100 snapshot files
+  - No false positives: files managed by other tools in shared directories are not flagged
+
+### [Performance] Add adaptive compression strategy auto-selecting compression level based on database size
+- **Priority:** P3 (nice-to-have)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-23
+- **Status:** pending
+- **Description:** All snapshots currently use the same compression settings regardless of database size. Small databases (< 10 MB) compress in milliseconds regardless of algorithm, but large databases (> 500 MB) benefit significantly from lower compression levels that trade ratio for speed — reducing a 5-minute snapshot to under a minute. Automatically selecting compression level based on estimated dump size (using the existing size estimation feature, completed) would optimise the speed-vs-size trade-off per snapshot without requiring users to understand compression tuning.
+- **Acceptance criteria:**
+  - Compression level auto-selected based on estimated dump size: small (< 50 MB) uses max compression, medium (50-500 MB) uses balanced, large (> 500 MB) uses fast compression
+  - Selected compression level shown in the snapshot creation dialog alongside the size estimate
+  - User can override the auto-selected level before confirming (dropdown with fast/balanced/max options)
+  - Compression strategy recorded in snapshot metadata for transparency
+  - Override preference optionally rememberable per profile (sticky override)
+  - No change to decompression — all levels produce snapshots readable by the same restore path
+
+### [Quality] Add automatic pre-restore safety snapshot capturing current database state before any restore operation
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-24
+- **Status:** pending
+- **Description:** Restoring a snapshot overwrites the target database, and despite the dry-run preview (completed) and alternate-database restore (completed), users performing a standard restore have no automatic safety net if the restored data is not what they expected. Capturing a lightweight snapshot of the current database state immediately before any restore — tagged as "[auto] pre-restore" with a direct link to the restore operation — would give users a one-click undo path. This complements the pre-migration auto-capture item (pending) by protecting against the other destructive database operation in Amber's workflow.
+- **Acceptance criteria:**
+  - Automatic snapshot created immediately before any restore operation begins (standard or alternate-database restore)
+  - Pre-restore snapshot tagged with "[auto] pre-restore" and linked to the snapshot being restored
+  - Snapshot captured using the existing snapshot creation pipeline (compression, checksum, metadata)
+  - Pre-restore snapshots subject to the existing retention policy (configurable, default: keep last 5 auto snapshots)
+  - Restore blocked if the pre-restore snapshot fails to capture (safety-first: don't proceed without a rollback path)
+  - "Undo restore" action available on the restore confirmation toast, triggering a restore from the pre-restore snapshot
+
+### [Quality] Add concurrent operation guard preventing simultaneous snapshot and restore operations on the same profile
+- **Priority:** P2 (important)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-24
+- **Status:** completed
+- **Completed:** 2026-03-28
+- **Description:** If a user triggers a snapshot while a restore is in progress on the same profile — or two restores run concurrently — the underlying database tools (mysqldump, mysql, pg_dump, psql) may produce corrupted output or leave the database in an inconsistent state. The app currently has no operation-level locking; the UI relies on users not clicking two things at once, which is fragile. A per-profile operation lock that blocks new snapshot or restore operations while one is in progress — with a clear "operation in progress" indicator and queuing or rejection for subsequent requests — would prevent the most dangerous class of data corruption in Amber's workflow.
+- **Acceptance criteria:**
+  - Per-profile operation lock acquired at the start of any snapshot or restore operation and released on completion or failure
+  - Subsequent snapshot or restore requests for the same profile blocked with a clear message ("Snapshot in progress on this profile — please wait")
+  - Lock state visible on the profile card as an "operation in progress" indicator with operation type and elapsed time
+  - Lock automatically released if the app crashes or is force-quit (no persistent lock file that blocks future operations)
+  - Operations on different profiles can proceed concurrently (lock is per-profile, not global)
+  - Cancel button remains functional while the lock is held (cancellation releases the lock)
+
+### [UX/UI] Add native macOS notification for completed long-running snapshot and restore operations
+- **Priority:** P3 (nice-to-have)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-24
+- **Status:** pending
+- **Description:** When a large database dump or restore takes several minutes, users typically switch to their editor or terminal while waiting. The streaming progress item (completed) provides in-app progress feedback, but the user must keep Amber visible or periodically check it. A native macOS notification on operation completion (or failure) — showing the snapshot name, database, duration, and result — would let users work uninterrupted and return promptly when the operation finishes. This is especially relevant for the scheduled snapshots item (pending) where operations may run while the app is in the background, and for the pre-restore safety snapshot item (pending) which adds an additional operation before every restore.
+- **Acceptance criteria:**
+  - Native macOS notification sent when any snapshot or restore operation completes (success or failure)
+  - Notification content includes: operation type (snapshot/restore), database name, snapshot name, duration, and result (success/error summary)
+  - Clicking the notification brings Amber to the foreground and navigates to the relevant snapshot
+  - Notifications suppressed when the app is in the foreground and the operation view is visible (no redundant alerts)
+  - Notification preference configurable in settings: always, only when backgrounded, never
+  - Failure notifications include a brief error summary to help users decide urgency before switching back
+
+### [Quality] Add operation history log recording all snapshot, restore, and cleanup actions with timestamps for audit trail and debugging
+- **Priority:** P3 (nice-to-have)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-24
+- **Status:** pending
+- **Description:** As Amber gains automated features — scheduled snapshots (pending), pre-restore safety snapshots (pending), and retention-based cleanup (completed) — operations happen without direct user initiation. When something goes wrong (a restore produces unexpected results, a scheduled snapshot fails silently, retention cleanup removes a snapshot the user wanted), there is no audit trail of what happened and when. A persistent operation log recording every snapshot creation, restore, deletion, and cleanup action with timestamps, operation parameters, and outcome (success/failure with error summary) would provide the debugging and accountability layer that autonomous operations require.
+- **Acceptance criteria:**
+  - All snapshot, restore, export, delete, and retention cleanup operations logged to a dedicated operations table in the SQLite metadata database
+  - Each log entry records: operation type, timestamp, profile name, snapshot name (if applicable), parameters, outcome (success/failure), and error summary (if failed)
+  - Operation history viewable from a dedicated panel in settings or a toolbar action
+  - History filterable by operation type, profile, date range, and outcome
+  - Log entries include duration for performance visibility (how long each operation took)
+  - Retention policy for log entries: configurable maximum age (default: 90 days) to prevent unbounded growth
+
+## Archived
+
+### [UX/UI] Add snapshot calendar view showing capture and restore history over time
+- **Priority:** P3 (nice-to-have)
+- **Size:** S (< 1hr)
+- **Added:** 2026-03-22
+- **Archived:** 2026-03-24
+- **Reason:** Visualisation feature with limited practical impact for the core snapshot workflow. The snapshot list with tagging, search, and filtering (all completed) provides adequate temporal navigation. Calendar view adds complexity without proportional user value. Revisit if users report difficulty finding snapshots by date after the catalogue grows significantly.
+
 ## Design System Adoption
 
 These items implement the @stuntrocket/ui design system to achieve premium visual uniformity across all Tauri applications. Items are ordered by dependency — foundation must complete before migration, migration before polish.
