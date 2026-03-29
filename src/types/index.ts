@@ -231,6 +231,17 @@ export interface OperationStatusResult {
   operation: string | null;
 }
 
+export type ScheduleInterval = "disabled" | "hourly" | "every_6h" | "daily" | "weekly";
+
+export interface ScheduleConfig {
+  profileId: string;
+  interval: ScheduleInterval;
+  lastSnapshotAt: string | null;
+  nextDueAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type SnapshotProgress =
   | { event: "started"; data: { operation: string; profileName: string } }
   | { event: "phase"; data: { phase: string; message: string } }

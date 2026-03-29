@@ -6,7 +6,12 @@
   import { useProfileStore } from "@/stores/profiles";
   import { useToastStack, SCard, SInput, SButton, SSelect, SFormField } from "@stuntrocket/ui";
   import PageHeader from "@/components/layout/PageHeader.vue";
-  import type { RetentionPolicy, RetentionEnforcementResult } from "@/types";
+  import type {
+    RetentionPolicy,
+    RetentionEnforcementResult,
+    ScheduleConfig,
+    ScheduleInterval,
+  } from "@/types";
 
   const router = useRouter();
   const settingsStore = useSettingsStore();
@@ -22,6 +27,12 @@
   const retentionMaxSizeMb = ref<number | undefined>(undefined);
   const retentionSaving = ref(false);
   const retentionEnforcing = ref(false);
+
+  const selectedScheduleProfile = ref("");
+  const scheduleInterval = ref<ScheduleInterval>("disabled");
+  const scheduleLastSnapshot = ref<string | null>(null);
+  const scheduleNextDue = ref<string | null>(null);
+  const scheduleSaving = ref(false);
 
   onMounted(async () => {
     await settingsStore.fetchAll();
@@ -86,6 +97,75 @@
       // Non-critical
     }
   });
+
+  watch(selectedScheduleProfile, async (profileId) => {
+    if (!profileId) return;
+    try {
+      const config = await invoke<ScheduleConfig | null>("schedule_config_get", { profileId });
+      if (config) {
+        scheduleInterval.value = config.interval as ScheduleInterval;
+        scheduleLastSnapshot.value = config.lastSnapshotAt;
+        scheduleNextDue.value = config.nextDueAt;
+      } else {
+        scheduleInterval.value = "disabled";
+        scheduleLastSnapshot.value = null;
+        scheduleNextDue.value = null;
+      }
+    } catch {
+      // Non-critical
+    }
+  });
+
+  const scheduleIntervalOptions = [
+    { value: "disabled", label: "Disabled" },
+    { value: "hourly", label: "Every hour" },
+    { value: "every_6h", label: "Every 6 hours" },
+    { value: "daily", label: "Daily" },
+    { value: "weekly", label: "Weekly" },
+  ];
+
+  function formatRelativeTime(iso: string | null): string {
+    if (!iso) return "Never";
+    const date = new Date(iso);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    if (diff < 0) {
+      const mins = Math.round(Math.abs(diff) / 60000);
+      if (mins < 60) return `in ${mins} minute${mins === 1 ? "" : "s"}`;
+      const hrs = Math.round(mins / 60);
+      if (hrs < 24) return `in ${hrs} hour${hrs === 1 ? "" : "s"}`;
+      const days = Math.round(hrs / 24);
+      return `in ${days} day${days === 1 ? "" : "s"}`;
+    }
+    const mins = Math.round(diff / 60000);
+    if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs} hour${hrs === 1 ? "" : "s"} ago`;
+    const days = Math.round(hrs / 24);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  }
+
+  async function saveScheduleConfig() {
+    if (!selectedScheduleProfile.value) return;
+    scheduleSaving.value = true;
+    try {
+      const config = await invoke<ScheduleConfig>("schedule_config_set", {
+        profileId: selectedScheduleProfile.value,
+        interval: scheduleInterval.value,
+      });
+      scheduleLastSnapshot.value = config.lastSnapshotAt;
+      scheduleNextDue.value = config.nextDueAt;
+      toast.success(
+        scheduleInterval.value === "disabled"
+          ? "Scheduled snapshots disabled."
+          : `Scheduled snapshots set to ${scheduleIntervalOptions.find((o) => o.value === scheduleInterval.value)?.label?.toLowerCase() ?? scheduleInterval.value}.`,
+      );
+    } catch (e) {
+      toast.error(`Failed to save schedule: ${e}`);
+    } finally {
+      scheduleSaving.value = false;
+    }
+  }
 
   async function saveRetentionPolicy() {
     if (!selectedRetentionProfile.value) return;
@@ -174,6 +254,67 @@
           </div>
         </SCard>
       </div>
+
+      <!-- Scheduled Snapshots — full width -->
+      <SCard>
+        <h3 class="mb-3 text-sm font-semibold text-text-primary">Scheduled Snapshots</h3>
+        <p class="mb-4 text-sm text-text-secondary">
+          Configure automatic snapshots on a recurring interval per profile. Scheduled snapshots are
+          tagged with <code class="text-xs">[auto] scheduled</code> and subject to retention
+          policies.
+        </p>
+
+        <SFormField label="Profile" class="mb-4 max-w-sm">
+          <SSelect v-model="selectedScheduleProfile">
+            <option value="" disabled>Select a profile&hellip;</option>
+            <option v-for="opt in profileOptions" :key="opt.value" :value="opt.value">
+              {{ opt.label }}
+            </option>
+          </SSelect>
+        </SFormField>
+
+        <div v-if="selectedScheduleProfile" class="space-y-3">
+          <div class="flex items-center gap-2">
+            <span class="w-40 text-sm text-text-secondary">Interval</span>
+            <div class="w-48">
+              <SSelect v-model="scheduleInterval">
+                <option v-for="opt in scheduleIntervalOptions" :key="opt.value" :value="opt.value">
+                  {{ opt.label }}
+                </option>
+              </SSelect>
+            </div>
+          </div>
+
+          <div
+            v-if="scheduleInterval !== 'disabled'"
+            class="space-y-1 rounded-lg border border-border-subtle bg-surface-raised px-3 py-2"
+          >
+            <p class="text-xs text-text-secondary">
+              Last snapshot:
+              <span class="font-medium text-text-primary">{{
+                formatRelativeTime(scheduleLastSnapshot)
+              }}</span>
+            </p>
+            <p class="text-xs text-text-secondary">
+              Next due:
+              <span class="font-medium text-text-primary">{{
+                formatRelativeTime(scheduleNextDue)
+              }}</span>
+            </p>
+          </div>
+
+          <div class="pt-2">
+            <SButton
+              variant="primary"
+              size="sm"
+              :loading="scheduleSaving"
+              @click="saveScheduleConfig"
+            >
+              Save Schedule
+            </SButton>
+          </div>
+        </div>
+      </SCard>
 
       <!-- Retention policies — full width -->
       <SCard>
