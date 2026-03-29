@@ -1,5 +1,15 @@
 # Amber Development Log
 
+## Cycle: 2026-03-30 00:00
+- App: amber
+- Items completed:
+  - [Feature] Add scheduled automatic snapshots on configurable intervals per profile (P2/M) — New `schedule_configs` SQLite table (migration 9) stores per-profile interval, last_snapshot_at, and next_due_at. Three new Rust commands: `schedule_config_get`, `schedule_config_set`, `schedule_config_list`. New `scheduler.rs` module with background tokio task checking every 60 seconds for due profiles. Scheduler acquires operation lock (prevents concurrent manual+scheduled), runs full dump/compress/checksum pipeline, tags snapshots with `[auto] scheduled` and `[interval] {type}`. Frontend: `ScheduleConfig` TypeScript type, SettingsView schedule configuration section with profile selector, interval dropdown, and last/next snapshot timestamps.
+- Items attempted but failed: none
+- Branch: feature/scheduled-snapshots (merged to develop)
+- Tests passing: yes (cargo test 23/23, cargo clippy clean, vue-tsc clean)
+- Build status: pending (pre-existing @stuntrocket/ui vue-router resolution issue in vite build)
+- Notes: The scheduler starts 30 seconds after app launch to avoid interfering with startup. When a profile's operation lock is busy (manual snapshot in progress), the scheduler skips that profile and retries next cycle. Scheduled snapshots respect existing retention policies since they use the standard snapshot_tags mechanism. The `compute_next_due` function calculates next run from last_snapshot_at + interval duration.
+
 ## Cycle: 2026-03-29 21:00
 - App: amber
 - Items completed:
@@ -8,7 +18,7 @@
 - Items attempted but failed: none
 - Branch: feature/orphan-cleanup-prerestore-snapshot
 - Tests passing: yes (cargo clippy clean, vue-tsc clean)
-- Build status: Rust release build pending. Tauri full build has pre-existing `vue-router` resolution issue in `@stuntrocket/ui`.
+- Build status: Tauri full build failed (pre-existing `vue-router` resolution issue in `@stuntrocket/ui` — not related to this cycle's changes). Merge to main preserved.
 - Notes: Both features are backend-focused with frontend type/store additions. No database migration needed — both use existing snapshot and snapshot_tags tables.
 
 ## Cycle: 2026-03-28 12:00

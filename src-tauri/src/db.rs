@@ -133,6 +133,17 @@ fn migrations() -> Migrations<'static> {
                 discovered_at TEXT NOT NULL
             );",
         ),
+        // Migration 9: Scheduled snapshot configuration per profile
+        M::up(
+            "CREATE TABLE schedule_configs (
+                profile_id        TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+                interval          TEXT NOT NULL CHECK(interval IN ('disabled','hourly','every_6h','daily','weekly')),
+                last_snapshot_at  TEXT,
+                next_due_at       TEXT,
+                created_at        TEXT NOT NULL,
+                updated_at        TEXT NOT NULL
+            );",
+        ),
     ])
 }
 
