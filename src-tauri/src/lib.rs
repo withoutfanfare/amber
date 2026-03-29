@@ -101,6 +101,9 @@ pub fn run() {
             commands::check_disk_space,
             // Operation guard
             commands::operation_status,
+            // Orphaned snapshot cleanup
+            commands::scan_orphaned_snapshots,
+            commands::delete_orphaned_snapshots,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

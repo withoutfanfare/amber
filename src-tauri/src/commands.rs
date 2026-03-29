@@ -118,6 +118,7 @@ pub struct RestoreRecord {
     pub target_db_name: String,
     pub duration_secs: f64,
     pub restored_at: String,
+    pub pre_restore_snapshot_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -177,6 +178,7 @@ fn row_to_restore_record(row: &rusqlite::Row) -> Result<RestoreRecord, rusqlite:
         target_db_name: row.get("target_db_name")?,
         duration_secs: row.get("duration_secs")?,
         restored_at: row.get("restored_at")?,
+        pre_restore_snapshot_id: None, // Not stored in restore_history — only returned from live restores
     })
 }
 
@@ -1054,6 +1056,216 @@ pub async fn snapshot_list(
     Ok(snapshots)
 }
 
+/// Internal helper: create a pre-restore safety snapshot of the current database state.
+/// This runs the dump pipeline without progress streaming and tags the result as "[auto] pre-restore".
+/// Returns the snapshot ID on success, or an error if the capture fails.
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+async fn create_pre_restore_snapshot(
+    db: &DbState,
+    paths: &AppPaths,
+    profile: &Profile,
+    creds: &ProfileCredentials,
+    effective_host: &str,
+    effective_port: u16,
+    effective_db_name: &str,
+    restoring_snapshot_name: &str,
+) -> Result<String, DsmError> {
+    let snapshot_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now();
+    let name = format!("[auto] pre-restore {}", now.format("%Y-%m-%d %H:%M"));
+    let note = Some(format!(
+        "Automatic safety snapshot before restoring '{restoring_snapshot_name}'"
+    ));
+
+    // Ensure project subdirectory exists
+    let project_dir = paths.snapshots_dir.join(&profile.project);
+    std::fs::create_dir_all(&project_dir)?;
+
+    let relative_path = format!("{}/{snapshot_id}.sql.gz", profile.project);
+    let output_path = paths.snapshots_dir.join(&relative_path);
+
+    let size_bytes = match profile.db_type.as_str() {
+        "mysql" => {
+            crate::dump::find_tool("mysqldump")?;
+            let df = crate::dump::write_mysql_defaults_file(
+                &paths.tmp_dir,
+                effective_host,
+                effective_port,
+                profile.username.as_deref().unwrap_or("root"),
+                creds.password.as_deref().unwrap_or(""),
+            )?;
+            let mut cmd = crate::dump::build_mysqldump_command(&df, effective_db_name);
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::piped());
+
+            let child_output = cmd.output().await.map_err(|e| DsmError::DumpError {
+                message: format!("Pre-restore snapshot failed (mysqldump): {e}"),
+                output: String::new(),
+            })?;
+
+            if !child_output.status.success() {
+                let stderr = String::from_utf8_lossy(&child_output.stderr)
+                    .trim()
+                    .to_string();
+                let _ = std::fs::remove_file(&df);
+                return Err(DsmError::DumpError {
+                    message: format!(
+                        "Pre-restore snapshot failed: mysqldump exited with status {}",
+                        child_output.status
+                    ),
+                    output: stderr,
+                });
+            }
+
+            let stdout_data = child_output.stdout;
+            let out = output_path.clone();
+            let compressed_size = tokio::task::spawn_blocking(move || {
+                crate::compress::compress_from_reader_with_progress(
+                    std::io::Cursor::new(stdout_data),
+                    &out,
+                    |_, _| {},
+                )
+            })
+            .await
+            .map_err(|e| DsmError::DumpError {
+                message: format!("Pre-restore compression failed: {e}"),
+                output: String::new(),
+            })??;
+
+            let _ = std::fs::remove_file(&df);
+            compressed_size
+        }
+        "postgresql" => {
+            crate::dump::find_tool("pg_dump")?;
+            let mut cmd = crate::dump::build_pg_dump_command(
+                effective_host,
+                effective_port,
+                profile.username.as_deref().unwrap_or("postgres"),
+                creds.password.as_deref().unwrap_or(""),
+                effective_db_name,
+            );
+            cmd.stdout(std::process::Stdio::piped());
+            cmd.stderr(std::process::Stdio::piped());
+
+            let child_output = cmd.output().await.map_err(|e| DsmError::DumpError {
+                message: format!("Pre-restore snapshot failed (pg_dump): {e}"),
+                output: String::new(),
+            })?;
+
+            if !child_output.status.success() {
+                let stderr = String::from_utf8_lossy(&child_output.stderr)
+                    .trim()
+                    .to_string();
+                return Err(DsmError::DumpError {
+                    message: format!(
+                        "Pre-restore snapshot failed: pg_dump exited with status {}",
+                        child_output.status
+                    ),
+                    output: stderr,
+                });
+            }
+
+            let stdout_data = child_output.stdout;
+            let out = output_path.clone();
+            let compressed_size = tokio::task::spawn_blocking(move || {
+                crate::compress::compress_from_reader_with_progress(
+                    std::io::Cursor::new(stdout_data),
+                    &out,
+                    |_, _| {},
+                )
+            })
+            .await
+            .map_err(|e| DsmError::DumpError {
+                message: format!("Pre-restore compression failed: {e}"),
+                output: String::new(),
+            })??;
+
+            compressed_size
+        }
+        "sqlite" => {
+            let temp_db_path = paths.tmp_dir.join(format!("{snapshot_id}.db"));
+            let mut cmd = crate::dump::build_sqlite_dump_command(
+                effective_db_name,
+                &temp_db_path.to_string_lossy(),
+            );
+
+            let child_output = cmd.output().await.map_err(|e| DsmError::DumpError {
+                message: format!("Pre-restore snapshot failed (sqlite3): {e}"),
+                output: String::new(),
+            })?;
+
+            if !child_output.status.success() {
+                let stderr = String::from_utf8_lossy(&child_output.stderr)
+                    .trim()
+                    .to_string();
+                return Err(DsmError::DumpError {
+                    message: format!(
+                        "Pre-restore snapshot failed: sqlite3 VACUUM INTO failed: {stderr}"
+                    ),
+                    output: stderr,
+                });
+            }
+
+            let temp = temp_db_path.clone();
+            let out = output_path.clone();
+            let compressed_size =
+                tokio::task::spawn_blocking(move || crate::compress::compress_file(&temp, &out))
+                    .await
+                    .map_err(|e| DsmError::DumpError {
+                        message: format!("Pre-restore compression failed: {e}"),
+                        output: String::new(),
+                    })??;
+
+            let _ = std::fs::remove_file(&temp_db_path);
+            compressed_size
+        }
+        _ => {
+            return Err(DsmError::DumpError {
+                message: format!("Unsupported database type: {}", profile.db_type),
+                output: String::new(),
+            });
+        }
+    };
+
+    // Compute checksum
+    let checksum_path = output_path.clone();
+    let checksum =
+        tokio::task::spawn_blocking(move || crate::checksum::compute_sha256(&checksum_path))
+            .await
+            .map_err(|e| DsmError::DumpError {
+                message: format!("Pre-restore checksum failed: {e}"),
+                output: String::new(),
+            })??;
+
+    // Save metadata
+    let now_str = now.to_rfc3339();
+    {
+        let conn = lock_db(db)?;
+        conn.execute(
+            "INSERT INTO snapshots (id, profile_id, name, note, file_path, size_bytes, checksum, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                snapshot_id,
+                profile.id,
+                name,
+                note,
+                relative_path,
+                size_bytes.cast_signed(),
+                checksum,
+                now_str,
+            ],
+        )?;
+
+        // Tag as auto pre-restore
+        conn.execute(
+            "INSERT OR IGNORE INTO snapshot_tags (snapshot_id, tag) VALUES (?1, ?2)",
+            params![snapshot_id, "[auto] pre-restore"],
+        )?;
+    }
+
+    Ok(snapshot_id)
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_lines)]
 pub async fn snapshot_restore(
@@ -1320,6 +1532,29 @@ pub async fn snapshot_restore(
         }
     }
 
+    // Create a pre-restore safety snapshot of the current database state.
+    // If this fails, abort the restore — safety-first: don't proceed without a rollback path.
+    let _ = on_progress.send(SnapshotProgress::Phase {
+        phase: "pre_restore_snapshot".to_string(),
+        message: "Capturing pre-restore safety snapshot...".to_string(),
+    });
+
+    let pre_restore_snapshot_id = create_pre_restore_snapshot(
+        &db,
+        &paths,
+        &profile,
+        &creds,
+        &effective_host,
+        effective_port,
+        &effective_db_name,
+        &snapshot.name,
+    )
+    .await
+    .map_err(|e| DsmError::RestoreError {
+        message: format!("Pre-restore safety snapshot failed — restore aborted. {e}"),
+        output: String::new(),
+    })?;
+
     let gz_path = paths.snapshots_dir.join(&snapshot.file_path);
     let mut defaults_file: Option<std::path::PathBuf> = None;
 
@@ -1530,6 +1765,7 @@ pub async fn snapshot_restore(
             target_db_name: effective_db_name,
             duration_secs,
             restored_at: now,
+            pre_restore_snapshot_id: Some(pre_restore_snapshot_id.clone()),
         }
     };
 
@@ -2986,7 +3222,9 @@ pub async fn check_disk_space(
         get_available_disk_space(&snapshots_dir)
     })
     .await
-    .map_err(|e| DsmError::FileSystemError(std::io::Error::other(format!("Disk check failed: {e}"))))?
+    .map_err(|e| {
+        DsmError::FileSystemError(std::io::Error::other(format!("Disk check failed: {e}")))
+    })?
     .map_err(DsmError::FileSystemError)?;
 
     let sufficient = available >= required;
@@ -3082,6 +3320,153 @@ pub async fn operation_status(
             operation: None,
         })
     }
+}
+
+// -- Orphaned Snapshot Cleanup ------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrphanedFile {
+    pub path: String,
+    pub size_bytes: u64,
+    pub created_at: Option<String>,
+    pub inferred_db_type: Option<String>,
+}
+
+/// Scan the snapshots directory for files not referenced by any snapshot
+/// metadata record. Returns a list of orphaned files with size and metadata.
+#[tauri::command]
+pub async fn scan_orphaned_snapshots(
+    db: State<'_, DbState>,
+    paths: State<'_, AppPaths>,
+) -> Result<Vec<OrphanedFile>, DsmError> {
+    // Collect all known file_path values from the database
+    let known_paths: std::collections::HashSet<String> = {
+        let conn = lock_db(&db)?;
+        let mut stmt = conn.prepare("SELECT file_path FROM snapshots")?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows.into_iter().collect()
+    };
+
+    let snapshots_dir = paths.snapshots_dir.clone();
+    tokio::task::spawn_blocking(move || -> Result<Vec<OrphanedFile>, DsmError> {
+        let mut orphans = Vec::new();
+
+        // Walk all project subdirectories
+        let Ok(entries) = std::fs::read_dir(&snapshots_dir) else {
+            return Ok(orphans);
+        };
+
+        for project_entry in entries.flatten() {
+            let project_path = project_entry.path();
+            if !project_path.is_dir() {
+                continue;
+            }
+
+            let project_name = project_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+
+            let Ok(files) = std::fs::read_dir(&project_path) else {
+                continue;
+            };
+
+            for file_entry in files.flatten() {
+                let file_path = file_entry.path();
+                if !file_path.is_file() {
+                    continue;
+                }
+
+                // Only consider .sql.gz and .db.gz files (snapshot formats)
+                let file_name = file_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+
+                if !file_name.ends_with(".sql.gz") && !file_name.ends_with(".db.gz") {
+                    continue;
+                }
+
+                // Build the relative path as stored in the database
+                let relative_path = format!("{project_name}/{file_name}");
+
+                if !known_paths.contains(&relative_path) {
+                    let metadata = std::fs::metadata(&file_path).ok();
+                    let size_bytes = metadata.as_ref().map_or(0, std::fs::Metadata::len);
+                    let created_at = metadata
+                        .as_ref()
+                        .and_then(|m| m.created().ok())
+                        .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339());
+
+                    // Infer database type from file extension
+                    let inferred_db_type = if file_name.ends_with(".db.gz") {
+                        Some("sqlite".to_string())
+                    } else {
+                        // Could be mysql or postgresql — can't determine without parsing
+                        None
+                    };
+
+                    orphans.push(OrphanedFile {
+                        path: relative_path,
+                        size_bytes,
+                        created_at,
+                        inferred_db_type,
+                    });
+                }
+            }
+        }
+
+        Ok(orphans)
+    })
+    .await
+    .map_err(|e| DsmError::ConnectionError {
+        message: format!("Orphan scan task failed: {e}"),
+    })?
+}
+
+/// Delete specific orphaned snapshot files from disk.
+#[tauri::command]
+pub async fn delete_orphaned_snapshots(
+    paths: State<'_, AppPaths>,
+    file_paths: Vec<String>,
+) -> Result<u32, DsmError> {
+    let snapshots_dir = paths.snapshots_dir.clone();
+    let mut deleted = 0u32;
+
+    for relative_path in &file_paths {
+        let full_path = snapshots_dir.join(relative_path);
+
+        // Safety: only delete files within the snapshots directory
+        if !full_path.starts_with(&snapshots_dir) {
+            continue;
+        }
+
+        if full_path.is_file() {
+            let _ = std::fs::remove_file(&full_path);
+            deleted += 1;
+        }
+    }
+
+    // Clean up empty project directories
+    if let Ok(entries) = std::fs::read_dir(&snapshots_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if let Ok(mut contents) = std::fs::read_dir(&path) {
+                    if contents.next().is_none() {
+                        let _ = std::fs::remove_dir(&path);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(deleted)
 }
 
 /// Acquire a per-profile operation lock. Returns a guard that clears the busy
