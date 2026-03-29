@@ -92,6 +92,14 @@ export interface RestoreRecord {
   targetDbName: string;
   durationSecs: number;
   restoredAt: string;
+  preRestoreSnapshotId?: string;
+}
+
+export interface OrphanedFile {
+  path: string;
+  sizeBytes: number;
+  createdAt?: string;
+  inferredDbType?: string;
 }
 
 export interface SnapshotRestoreOptions {
