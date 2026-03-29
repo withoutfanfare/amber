@@ -7,7 +7,7 @@
 - Items attempted but failed: none
 - Branch: feature/scheduled-snapshots (merged to develop)
 - Tests passing: yes (cargo test 23/23, cargo clippy clean, vue-tsc clean)
-- Build status: pending (pre-existing @stuntrocket/ui vue-router resolution issue in vite build)
+- Build status: failed (pre-existing @stuntrocket/ui vue-router resolution issue in vite build — not caused by this cycle's changes)
 - Notes: The scheduler starts 30 seconds after app launch to avoid interfering with startup. When a profile's operation lock is busy (manual snapshot in progress), the scheduler skips that profile and retries next cycle. Scheduled snapshots respect existing retention policies since they use the standard snapshot_tags mechanism. The `compute_next_due` function calculates next run from last_snapshot_at + interval duration.
 
 ## Cycle: 2026-03-29 21:00
