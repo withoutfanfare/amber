@@ -3512,6 +3512,124 @@ fn acquire_profile_lock(
     }
 }
 
+// -- Schedule Config Commands -------------------------------------------------
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ScheduleConfig {
+    pub profile_id: String,
+    pub interval: String,
+    pub last_snapshot_at: Option<String>,
+    pub next_due_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Compute the next due timestamp from last snapshot time and interval.
+pub fn compute_next_due(last_at: &str, interval: &str) -> Option<String> {
+    let last = chrono::DateTime::parse_from_rfc3339(last_at).ok()?;
+    let duration = match interval {
+        "hourly" => chrono::Duration::hours(1),
+        "every_6h" => chrono::Duration::hours(6),
+        "daily" => chrono::Duration::days(1),
+        "weekly" => chrono::Duration::weeks(1),
+        _ => return None,
+    };
+    Some((last + duration).to_rfc3339())
+}
+
+#[tauri::command]
+pub async fn schedule_config_get(
+    db: State<'_, DbState>,
+    profile_id: String,
+) -> Result<Option<ScheduleConfig>, DsmError> {
+    let conn = lock_db(&db)?;
+    let result = conn.query_row(
+        "SELECT profile_id, interval, last_snapshot_at, next_due_at, created_at, updated_at
+         FROM schedule_configs WHERE profile_id = ?1",
+        params![profile_id],
+        |row| {
+            Ok(ScheduleConfig {
+                profile_id: row.get(0)?,
+                interval: row.get(1)?,
+                last_snapshot_at: row.get(2)?,
+                next_due_at: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        },
+    );
+    match result {
+        Ok(config) => Ok(Some(config)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(DsmError::DatabaseError(e)),
+    }
+}
+
+#[tauri::command]
+pub async fn schedule_config_set(
+    db: State<'_, DbState>,
+    profile_id: String,
+    interval: String,
+) -> Result<ScheduleConfig, DsmError> {
+    let now = chrono::Utc::now().to_rfc3339();
+    let conn = lock_db(&db)?;
+
+    // Check if config already exists to preserve last_snapshot_at
+    let existing_last: Option<String> = conn
+        .query_row(
+            "SELECT last_snapshot_at FROM schedule_configs WHERE profile_id = ?1",
+            params![profile_id],
+            |row| row.get(0),
+        )
+        .ok();
+
+    let next_due = existing_last
+        .as_ref()
+        .and_then(|last| compute_next_due(last, &interval));
+
+    conn.execute(
+        "INSERT INTO schedule_configs (profile_id, interval, last_snapshot_at, next_due_at, created_at, updated_at)
+         VALUES (?1, ?2, (SELECT last_snapshot_at FROM schedule_configs WHERE profile_id = ?1), ?3, ?4, ?5)
+         ON CONFLICT(profile_id) DO UPDATE SET
+            interval = excluded.interval,
+            next_due_at = excluded.next_due_at,
+            updated_at = excluded.updated_at",
+        params![profile_id, interval, next_due, now, now],
+    )?;
+
+    Ok(ScheduleConfig {
+        profile_id,
+        interval,
+        last_snapshot_at: existing_last,
+        next_due_at: next_due,
+        created_at: now.clone(),
+        updated_at: now,
+    })
+}
+
+#[tauri::command]
+pub async fn schedule_config_list(db: State<'_, DbState>) -> Result<Vec<ScheduleConfig>, DsmError> {
+    let conn = lock_db(&db)?;
+    let mut stmt = conn.prepare(
+        "SELECT profile_id, interval, last_snapshot_at, next_due_at, created_at, updated_at
+         FROM schedule_configs",
+    )?;
+    let configs = stmt
+        .query_map([], |row| {
+            Ok(ScheduleConfig {
+                profile_id: row.get(0)?,
+                interval: row.get(1)?,
+                last_snapshot_at: row.get(2)?,
+                next_due_at: row.get(3)?,
+                created_at: row.get(4)?,
+                updated_at: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(configs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

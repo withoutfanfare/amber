@@ -11,6 +11,7 @@ mod dump;
 mod ensure_db;
 mod error;
 mod progress;
+mod scheduler;
 mod ssh;
 
 use crate::db::{init_db, AppPaths, DbState, OperationLocks};
@@ -51,6 +52,9 @@ pub fn run() {
                     let _ = std::fs::remove_file(entry.path());
                 }
             }
+
+            // Start the background snapshot scheduler
+            scheduler::start(app.handle().clone());
 
             Ok(())
         })
@@ -104,6 +108,10 @@ pub fn run() {
             // Orphaned snapshot cleanup
             commands::scan_orphaned_snapshots,
             commands::delete_orphaned_snapshots,
+            // Scheduled snapshots
+            commands::schedule_config_get,
+            commands::schedule_config_set,
+            commands::schedule_config_list,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
