@@ -1,5 +1,16 @@
 # Amber Development Log
 
+## Cycle: 2026-03-29 21:00
+- App: amber
+- Items completed:
+  - [Quality] Interrupted snapshot cleanup detecting and removing orphaned partial dump files on launch (P2/S) — New `scan_orphaned_snapshots` Tauri command walks the snapshots directory, compares .sql.gz and .db.gz files against all `file_path` entries in the snapshots table, and returns orphan metadata (path, size, creation date, inferred DB type). `delete_orphaned_snapshots` command safely removes specified orphaned files and cleans up empty project directories. Frontend types and store methods added for integration.
+  - [Quality] Automatic pre-restore safety snapshot capturing current database state before any restore operation (P2/S) — Internal `create_pre_restore_snapshot` async helper runs the full dump pipeline (mysqldump/pg_dump/sqlite3 VACUUM INTO → gzip compression → SHA-256 checksum → metadata insertion) without progress streaming. Executes within `snapshot_restore` after SSH tunnel setup and before the actual restore, using the same connection context. Tagged as "[auto] pre-restore" with note linking to the snapshot being restored. Restore blocked if the safety snapshot fails. `RestoreRecord` now includes `pre_restore_snapshot_id` for frontend undo support.
+- Items attempted but failed: none
+- Branch: feature/orphan-cleanup-prerestore-snapshot
+- Tests passing: yes (cargo clippy clean, vue-tsc clean)
+- Build status: Rust release build pending. Tauri full build has pre-existing `vue-router` resolution issue in `@stuntrocket/ui`.
+- Notes: Both features are backend-focused with frontend type/store additions. No database migration needed — both use existing snapshot and snapshot_tags tables.
+
 ## Cycle: 2026-03-28 12:00
 - App: amber
 - Items completed:

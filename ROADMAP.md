@@ -337,7 +337,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-23
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-29
 - **Description:** If the app crashes or is force-quit during a database dump, partial snapshot files remain on disk without corresponding metadata entries in the SQLite database — consuming space invisibly and potentially confusing users who find unmanaged files in the snapshot directory. The integrity verification item (completed) validates existing snapshots, but does not detect orphaned files that were never registered. Scanning the snapshot directory on launch for files not referenced by any metadata record and offering cleanup would prevent silent disk bloat from failed operations.
 - **Acceptance criteria:**
   - Snapshot directory scanned on app launch for files not referenced by any snapshot metadata record
@@ -365,7 +366,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** S (< 1hr)
 - **Added:** 2026-03-24
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-29
 - **Description:** Restoring a snapshot overwrites the target database, and despite the dry-run preview (completed) and alternate-database restore (completed), users performing a standard restore have no automatic safety net if the restored data is not what they expected. Capturing a lightweight snapshot of the current database state immediately before any restore — tagged as "[auto] pre-restore" with a direct link to the restore operation — would give users a one-click undo path. This complements the pre-migration auto-capture item (pending) by protecting against the other destructive database operation in Amber's workflow.
 - **Acceptance criteria:**
   - Automatic snapshot created immediately before any restore operation begins (standard or alternate-database restore)
