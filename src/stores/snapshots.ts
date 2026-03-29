@@ -13,6 +13,7 @@ import type {
   RestorePreview,
   VersionCompatibility,
   ExportResult,
+  OrphanedFile,
 } from "@/types";
 import { useRestoreHistoryStore } from "./restoreHistory";
 
@@ -256,6 +257,14 @@ export const useSnapshotStore = defineStore("snapshots", () => {
     return await invoke<ExportResult>("snapshot_export_sql", { snapshotId, outputDir });
   }
 
+  async function scanOrphans(): Promise<OrphanedFile[]> {
+    return await invoke<OrphanedFile[]>("scan_orphaned_snapshots");
+  }
+
+  async function deleteOrphans(filePaths: string[]): Promise<number> {
+    return await invoke<number>("delete_orphaned_snapshots", { filePaths });
+  }
+
   return {
     snapshots,
     loading,
@@ -285,5 +294,7 @@ export const useSnapshotStore = defineStore("snapshots", () => {
     restorePreview,
     checkVersionCompatibility,
     exportSql,
+    scanOrphans,
+    deleteOrphans,
   };
 });
