@@ -8,7 +8,7 @@
 - Items attempted but failed: none
 - Branch: feature/orphan-cleanup-prerestore-snapshot
 - Tests passing: yes (cargo clippy clean, vue-tsc clean)
-- Build status: Rust release build pending. Tauri full build has pre-existing `vue-router` resolution issue in `@stuntrocket/ui`.
+- Build status: Tauri full build failed (pre-existing `vue-router` resolution issue in `@stuntrocket/ui` — not related to this cycle's changes). Merge to main preserved.
 - Notes: Both features are backend-focused with frontend type/store additions. No database migration needed — both use existing snapshot and snapshot_tags tables.
 
 ## Cycle: 2026-03-28 12:00
