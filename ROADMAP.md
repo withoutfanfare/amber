@@ -251,7 +251,8 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
 - **Priority:** P2 (important)
 - **Size:** M (1-3hrs)
 - **Added:** 2026-03-22
-- **Status:** pending
+- **Status:** completed
+- **Completed:** 2026-03-29
 - **Description:** Manual and pre-migration snapshots cover deliberate and reactive capture, but many developers want a regular backup cadence that runs without intervention. Configurable per-profile schedules (hourly, every 6 hours, daily) with retention integration would automate the most basic protection need — especially for actively developed databases where schema changes happen frequently between manual snapshots. This extends the retention policy infrastructure (already completed) and complements the pre-migration auto-capture item by providing continuous rather than event-driven protection.
 - **Acceptance criteria:**
   - Schedule configurable per profile: disabled, hourly, every 6 hours, daily, weekly
