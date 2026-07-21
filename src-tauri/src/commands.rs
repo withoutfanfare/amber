@@ -3630,10 +3630,384 @@ pub async fn schedule_config_list(db: State<'_, DbState>) -> Result<Vec<Schedule
     Ok(configs)
 }
 
+// -- Snapshot Content Browser --------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotContentTable {
+    pub table_name: String,
+    pub columns: Vec<String>,
+    pub row_count: usize,
+    pub sample_rows: Vec<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SnapshotContent {
+    pub snapshot_name: String,
+    pub db_type: String,
+    pub tables: Vec<SnapshotContentTable>,
+    pub total_rows: usize,
+}
+
+const MAX_SAMPLE_ROWS: usize = 50;
+const MAX_CELL_LENGTH: usize = 200;
+
+/// Truncate a string value for display, appending an ellipsis if truncated.
+fn truncate_cell(value: &str) -> String {
+    match value.char_indices().nth(MAX_CELL_LENGTH) {
+        Some((end, _)) => format!("{}…", &value[..end]),
+        None => value.to_string(),
+    }
+}
+
+/// Parse `MySQL` INSERT VALUES rows from a single INSERT statement line.
+/// Handles quoted strings (with escaped quotes), NULL, and numeric values.
+fn parse_mysql_insert_values(values_part: &str) -> Vec<Vec<String>> {
+    let mut rows = Vec::new();
+    let mut current_row: Vec<String> = Vec::new();
+    let mut current_value = String::new();
+    let mut in_string = false;
+    let mut escape_next = false;
+    let mut depth = 0;
+    let chars: Vec<char> = values_part.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+
+    while i < len {
+        let ch = chars[i];
+
+        if escape_next {
+            current_value.push(ch);
+            escape_next = false;
+            i += 1;
+            continue;
+        }
+
+        if in_string {
+            if ch == '\\' {
+                current_value.push(ch);
+                escape_next = true;
+            } else if ch == '\'' {
+                // Check for escaped quote ''
+                if i + 1 < len && chars[i + 1] == '\'' {
+                    current_value.push('\'');
+                    i += 1;
+                } else {
+                    in_string = false;
+                }
+            } else {
+                current_value.push(ch);
+            }
+        } else {
+            match ch {
+                '(' => {
+                    depth += 1;
+                    if depth == 1 {
+                        current_row = Vec::new();
+                        current_value = String::new();
+                    } else {
+                        current_value.push(ch);
+                    }
+                }
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let trimmed = current_value.trim();
+                        if !trimmed.is_empty() || !current_row.is_empty() {
+                            current_row.push(truncate_cell(trimmed));
+                        }
+                        rows.push(std::mem::take(&mut current_row));
+                        current_value = String::new();
+                    } else {
+                        current_value.push(ch);
+                    }
+                }
+                ',' if depth == 1 => {
+                    current_row.push(truncate_cell(current_value.trim()));
+                    current_value = String::new();
+                }
+                '\'' if depth >= 1 => {
+                    in_string = true;
+                }
+                _ => {
+                    if depth >= 1 {
+                        current_value.push(ch);
+                    }
+                }
+            }
+        }
+
+        i += 1;
+    }
+
+    rows
+}
+
+/// Extract the table name from an INSERT INTO statement.
+fn parse_insert_table_name(line: &str) -> Option<String> {
+    // INSERT INTO `table` or INSERT INTO "table" or INSERT INTO table
+    let upper = line.to_uppercase();
+    if !upper.starts_with("INSERT INTO") {
+        return None;
+    }
+    let rest = line.get(12..)?.trim();
+    let name = rest
+        .trim_start_matches('`')
+        .trim_start_matches('"')
+        .split(['`', '"', ' ', '('])
+        .next()?
+        .to_string();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+/// Extract table name and column list from a `PostgreSQL` COPY ... FROM stdin statement.
+fn parse_pg_copy_line(line: &str) -> Option<(String, Vec<String>)> {
+    let upper = line.to_uppercase();
+    if !upper.starts_with("COPY ") || !upper.contains("FROM STDIN") {
+        return None;
+    }
+    // COPY table_name (col1, col2, ...) FROM stdin;
+    let rest = line.get(5..)?.trim();
+    let table_end = rest.find([' ', '('])?;
+    let table_name = rest[..table_end].trim().to_string();
+
+    let mut columns = Vec::new();
+    if let Some(paren_start) = rest.find('(') {
+        if let Some(paren_end) = rest.find(')') {
+            let cols_str = &rest[paren_start + 1..paren_end];
+            columns = cols_str
+                .split(',')
+                .map(|c| c.trim().trim_matches('"').to_string())
+                .collect();
+        }
+    }
+
+    Some((table_name, columns))
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_lines)]
+pub async fn snapshot_browse_content(
+    db: State<'_, DbState>,
+    paths: State<'_, AppPaths>,
+    snapshot_id: String,
+) -> Result<SnapshotContent, DsmError> {
+    let (snap, profile_db_type) = {
+        let conn = lock_db(&db)?;
+        let snapshot = conn
+            .query_row(
+                "SELECT * FROM snapshots WHERE id = ?1",
+                params![snapshot_id],
+                row_to_snapshot,
+            )
+            .map_err(|_| DsmError::SnapshotNotFound(snapshot_id.clone()))?;
+        let db_type: String = conn
+            .query_row(
+                "SELECT db_type FROM profiles WHERE id = ?1",
+                params![snapshot.profile_id],
+                |row| row.get(0),
+            )
+            .unwrap_or_else(|_| "mysql".to_string());
+        (snapshot, db_type)
+    };
+
+    let gz_path = paths.snapshots_dir.join(&snap.file_path);
+    let snapshot_name = snap.name.clone();
+    let db_type = profile_db_type.clone();
+
+    let tables = tokio::task::spawn_blocking(move || {
+        let mut sql_content = Vec::new();
+        crate::compress::decompress_to_writer(&gz_path, &mut sql_content)?;
+        let sql_text = String::from_utf8_lossy(&sql_content);
+
+        // Phase 1: Extract schema (table → columns) using existing pattern
+        let mut schema: HashMap<String, Vec<String>> = HashMap::new();
+        let mut current_table: Option<String> = None;
+        let mut current_columns: Vec<String> = Vec::new();
+
+        // Phase 2: Track row data per table
+        let mut row_counts: HashMap<String, usize> = HashMap::new();
+        let mut sample_rows: HashMap<String, Vec<Vec<String>>> = HashMap::new();
+
+        // PostgreSQL COPY state
+        let mut in_pg_copy = false;
+        let mut pg_copy_table = String::new();
+
+        for line in sql_text.lines() {
+            let trimmed = line.trim();
+
+            // Skip empty lines and comments (except structured markers)
+            if trimmed.is_empty() {
+                continue;
+            }
+
+            // --- Schema extraction (CREATE TABLE) ---
+            if let Some(name) = parse_create_table_line(trimmed) {
+                current_table = Some(name);
+                current_columns = Vec::new();
+                continue;
+            }
+
+            if current_table.is_some() {
+                if trimmed.starts_with(')') {
+                    if let Some(table_name) = current_table.take() {
+                        let col_names: Vec<String> = current_columns
+                            .iter()
+                            .filter_map(|col_def| {
+                                let name = col_def
+                                    .trim_start_matches('`')
+                                    .trim_start_matches('"')
+                                    .split(['`', '"', ' '])
+                                    .next()?;
+                                if name.is_empty() {
+                                    None
+                                } else {
+                                    Some(name.to_string())
+                                }
+                            })
+                            .collect();
+                        schema.insert(table_name, col_names);
+                    }
+                    current_columns.clear();
+                    continue;
+                }
+
+                if trimmed.starts_with('`')
+                    || trimmed.starts_with('"')
+                    || trimmed
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_alphabetic())
+                {
+                    let col = trimmed.trim_end_matches(',').to_string();
+                    let upper = col.to_uppercase();
+                    if !upper.starts_with("PRIMARY KEY")
+                        && !upper.starts_with("KEY ")
+                        && !upper.starts_with("INDEX ")
+                        && !upper.starts_with("UNIQUE ")
+                        && !upper.starts_with("CONSTRAINT ")
+                        && !upper.starts_with("FOREIGN KEY")
+                    {
+                        current_columns.push(col);
+                    }
+                }
+                continue;
+            }
+
+            // --- PostgreSQL COPY data ---
+            if in_pg_copy {
+                if trimmed == "\\." {
+                    in_pg_copy = false;
+                    continue;
+                }
+                let count = row_counts.entry(pg_copy_table.clone()).or_insert(0);
+                *count += 1;
+
+                let table_samples = sample_rows.entry(pg_copy_table.clone()).or_default();
+                if table_samples.len() < MAX_SAMPLE_ROWS {
+                    let row: Vec<String> = line
+                        .split('\t')
+                        .map(|val| {
+                            let v = if val == "\\N" { "NULL" } else { val };
+                            truncate_cell(v)
+                        })
+                        .collect();
+                    table_samples.push(row);
+                }
+                continue;
+            }
+
+            // --- PostgreSQL COPY ... FROM stdin ---
+            if db_type == "postgresql" {
+                if let Some((table, columns)) = parse_pg_copy_line(trimmed) {
+                    in_pg_copy = true;
+                    pg_copy_table.clone_from(&table);
+                    // If schema doesn't have columns from CREATE TABLE, use COPY columns
+                    if !columns.is_empty() {
+                        schema.entry(table).or_insert(columns);
+                    }
+                    continue;
+                }
+            }
+
+            // --- MySQL INSERT INTO ---
+            if let Some(table_name) = parse_insert_table_name(trimmed) {
+                // Find VALUES keyword
+                let upper = trimmed.to_uppercase();
+                if let Some(values_pos) = upper.find("VALUES") {
+                    let values_part = &trimmed[values_pos + 6..];
+                    let parsed = parse_mysql_insert_values(values_part);
+                    let count = row_counts.entry(table_name.clone()).or_insert(0);
+                    let table_samples = sample_rows.entry(table_name.clone()).or_default();
+
+                    for row in parsed {
+                        *count += 1;
+                        if table_samples.len() < MAX_SAMPLE_ROWS {
+                            table_samples.push(row);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build the result: one entry per table found in schema
+        let mut tables: Vec<SnapshotContentTable> = schema
+            .into_iter()
+            .map(|(table_name, columns)| {
+                let row_count = row_counts.get(&table_name).copied().unwrap_or(0);
+                let rows = sample_rows.remove(&table_name).unwrap_or_default();
+                SnapshotContentTable {
+                    table_name,
+                    columns,
+                    row_count,
+                    sample_rows: rows,
+                }
+            })
+            .collect();
+
+        // Sort tables alphabetically
+        tables.sort_by(|a, b| a.table_name.cmp(&b.table_name));
+
+        Ok::<Vec<SnapshotContentTable>, DsmError>(tables)
+    })
+    .await
+    .map_err(|e| {
+        DsmError::FileSystemError(std::io::Error::other(format!(
+            "Content extraction failed: {e}"
+        )))
+    })??;
+
+    let total_rows = tables.iter().map(|t| t.row_count).sum();
+
+    Ok(SnapshotContent {
+        snapshot_name,
+        db_type: profile_db_type,
+        tables,
+        total_rows,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use rusqlite::Connection;
+
+    #[test]
+    fn snapshot_content_parsers_handle_supported_dump_formats_and_unicode() {
+        let rows = parse_mysql_insert_values(&format!("(1,'{}')", "é".repeat(201)));
+        assert_eq!(rows[0][0], "1");
+        assert_eq!(rows[0][1], format!("{}…", "é".repeat(200)));
+
+        let (table, columns) =
+            parse_pg_copy_line("COPY public.users (id, name) FROM stdin;").unwrap();
+        assert_eq!(table, "public.users");
+        assert_eq!(columns, ["id", "name"]);
+    }
 
     /// Create an in-memory database with the app schema applied.
     fn test_db() -> Connection {

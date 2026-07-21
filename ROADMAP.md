@@ -232,6 +232,20 @@ Database snapshot manager for local development databases (MySQL, PostgreSQL, SQ
   - All shortcuts documented in a help overlay (Cmd+/)
   - No conflicts with system-level macOS shortcuts
 
+### [Feature] Add scheduled automatic snapshots with configurable intervals
+- **Priority:** P2 (important)
+- **Size:** M (1-3hrs)
+- **Added:** 2026-03-22
+- **Status:** pending
+- **Description:** The pre-migration auto-capture item protects users at a specific event (migration commands), but developers also need a regular safety net that runs without manual intervention. Scheduled snapshots on configurable intervals (e.g. every 4 hours during working hours, daily at midnight) would ensure recent restore points always exist, even when developers forget to snapshot before risky changes that aren't formal migrations — manual schema edits, bulk data imports, or seed script runs that go wrong.
+- **Acceptance criteria:**
+  - Per-profile snapshot schedule configurable: interval (hourly, every N hours, daily), active hours window (e.g. 09:00-18:00), enabled/disabled toggle
+  - Scheduled snapshots created with "[auto] scheduled" tag and timestamp
+  - Schedule runs only when the app is open (no background daemon required)
+  - Scheduled snapshots subject to the existing retention policy (not exempt from cleanup)
+  - Next scheduled snapshot time visible on the profile card
+  - Schedule paused automatically if the database connection test fails (avoids repeated error snapshots)
+
 ### [Feature] Add snapshot content browser for inspecting data without restoring
 - **Priority:** P3 (nice-to-have)
 - **Size:** M (1-3hrs)

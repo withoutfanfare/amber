@@ -99,6 +99,8 @@ pub fn run() {
             commands::snapshot_check_version_compatibility,
             // SQL export
             commands::snapshot_export_sql,
+            // Content browser
+            commands::snapshot_browse_content,
             // Health monitoring
             commands::profile_health_check,
             // Disk space
