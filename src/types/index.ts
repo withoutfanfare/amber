@@ -1,5 +1,6 @@
 export type DbType = "mysql" | "postgresql" | "sqlite";
 export type Environment = "local" | "staging" | "live";
+export type RestoreTestStatus = "passed" | "failed" | "not_configured";
 
 export interface Profile {
   id: string;
@@ -9,6 +10,7 @@ export interface Profile {
   host: string | null;
   port: number | null;
   databaseName: string;
+  databaseNames: string[];
   username: string | null;
   sshEnabled: boolean;
   sshHost: string | null;
@@ -26,7 +28,7 @@ export interface ProfileCreatePayload {
   dbType: DbType;
   host?: string;
   port?: number;
-  databaseName: string;
+  databaseNames: string[];
   username?: string;
   password?: string;
   sshEnabled?: boolean;
@@ -48,7 +50,7 @@ export interface ProfileUpdateInput {
   name?: string;
   host?: string;
   port?: number;
-  databaseName?: string;
+  databaseNames?: string[];
   username?: string;
   password?: string;
   sshEnabled?: boolean;
@@ -64,6 +66,7 @@ export interface ProfileUpdateInput {
 export interface Snapshot {
   id: string;
   profileId: string;
+  databaseName: string | null;
   name: string;
   note: string | null;
   filePath: string;
@@ -71,10 +74,24 @@ export interface Snapshot {
   dbVersion: string | null;
   dumpToolVersion: string | null;
   checksum: string | null;
+  restoreTestStatus: RestoreTestStatus;
+  restoreTestMessage: string | null;
+  restoreTestedAt: string | null;
   createdAt: string;
   restoredAt: string | null;
   pinned: boolean;
   tags: string[];
+}
+
+export interface RestoreTestEngineSettings {
+  enabled: boolean;
+  port: number;
+  username: string;
+}
+
+export interface RestoreTestSettings {
+  mysql: RestoreTestEngineSettings;
+  postgresql: RestoreTestEngineSettings;
 }
 
 export interface SnapshotCreatePayload {

@@ -20,6 +20,7 @@ pub struct Profile {
     pub host: Option<String>,
     pub port: Option<u16>,
     pub database_name: String,
+    pub database_names: Vec<String>,
     pub username: Option<String>,
     pub ssh_enabled: bool,
     pub ssh_host: Option<String>,
@@ -39,7 +40,8 @@ pub struct CreateProfileInput {
     pub db_type: String,
     pub host: Option<String>,
     pub port: Option<u16>,
-    pub database_name: String,
+    pub database_name: Option<String>,
+    pub database_names: Option<Vec<String>>,
     pub username: Option<String>,
     pub password: Option<String>,
     pub ssh_enabled: bool,
@@ -60,6 +62,7 @@ pub struct UpdateProfileInput {
     pub host: Option<String>,
     pub port: Option<u16>,
     pub database_name: Option<String>,
+    pub database_names: Option<Vec<String>>,
     pub username: Option<String>,
     pub password: Option<String>,
     pub ssh_enabled: Option<bool>,
@@ -77,6 +80,7 @@ pub struct UpdateProfileInput {
 pub struct Snapshot {
     pub id: String,
     pub profile_id: String,
+    pub database_name: Option<String>,
     pub name: String,
     pub note: Option<String>,
     pub file_path: String,
@@ -84,6 +88,9 @@ pub struct Snapshot {
     pub db_version: Option<String>,
     pub dump_tool_version: Option<String>,
     pub checksum: Option<String>,
+    pub restore_test_status: String,
+    pub restore_test_message: Option<String>,
+    pub restore_tested_at: Option<String>,
     pub created_at: String,
     pub restored_at: Option<String>,
     pub pinned: bool,
@@ -141,6 +148,16 @@ pub struct ProjectStorage {
 /// Map a `rusqlite` row to a `Profile` struct.
 #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
 fn row_to_profile(row: &rusqlite::Row) -> Result<Profile, rusqlite::Error> {
+    let database_name = row.get::<_, String>("database_name")?;
+    let mut database_names = row
+        .get::<_, String>("database_names")
+        .ok()
+        .and_then(|value| serde_json::from_str::<Vec<String>>(&value).ok())
+        .unwrap_or_default();
+    if database_names.is_empty() {
+        database_names.push(database_name.clone());
+    }
+
     Ok(Profile {
         id: row.get("id")?,
         project: row.get("project")?,
@@ -148,7 +165,8 @@ fn row_to_profile(row: &rusqlite::Row) -> Result<Profile, rusqlite::Error> {
         db_type: row.get("db_type")?,
         host: row.get("host")?,
         port: row.get::<_, Option<i32>>("port")?.map(|v| v as u16),
-        database_name: row.get("database_name")?,
+        database_name,
+        database_names,
         username: row.get("username")?,
         ssh_enabled: row.get::<_, i32>("ssh_enabled")? != 0,
         ssh_host: row.get("ssh_host")?,
@@ -159,6 +177,31 @@ fn row_to_profile(row: &rusqlite::Row) -> Result<Profile, rusqlite::Error> {
         created_at: row.get("created_at")?,
         updated_at: row.get("updated_at")?,
     })
+}
+
+fn normalise_database_names(
+    database_names: Option<Vec<String>>,
+    database_name: Option<String>,
+) -> Result<Vec<String>, DsmError> {
+    let mut names = database_names.unwrap_or_else(|| database_name.into_iter().collect());
+    for name in &mut names {
+        *name = name.trim().to_string();
+    }
+
+    if names.is_empty() || names.iter().any(String::is_empty) {
+        return Err(DsmError::ValidationError {
+            message: "Add at least one database name or SQLite file path.".to_string(),
+        });
+    }
+
+    let mut unique = std::collections::HashSet::new();
+    if !names.iter().all(|name| unique.insert(name.clone())) {
+        return Err(DsmError::ValidationError {
+            message: "Database names must be unique within a profile.".to_string(),
+        });
+    }
+
+    Ok(names)
 }
 
 /// Lock the database mutex, mapping a poison error to `DsmError`.
@@ -192,19 +235,35 @@ pub async fn profile_create(
 ) -> Result<Profile, DsmError> {
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
+    let project = input.project.trim();
+    let name = input.name.trim();
+    if project.is_empty() || name.is_empty() {
+        return Err(DsmError::ValidationError {
+            message: "Project and profile names are required.".to_string(),
+        });
+    }
+    if !matches!(input.db_type.as_str(), "mysql" | "postgresql" | "sqlite") {
+        return Err(DsmError::ValidationError {
+            message: "Choose MySQL, PostgreSQL or SQLite.".to_string(),
+        });
+    }
+    let database_names = normalise_database_names(input.database_names, input.database_name)?;
+    let database_name = database_names[0].clone();
+    let database_names_json = serde_json::to_string(&database_names)?;
 
     let conn = lock_db(&db)?;
     conn.execute(
-        "INSERT INTO profiles (id, project, name, db_type, host, port, database_name, username, ssh_enabled, ssh_host, ssh_port, ssh_user, environment, notes, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+        "INSERT INTO profiles (id, project, name, db_type, host, port, database_name, database_names, username, ssh_enabled, ssh_host, ssh_port, ssh_user, environment, notes, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
         params![
             id,
-            input.project,
-            input.name,
+            project,
+            name,
             input.db_type,
             input.host,
             input.port.map(i32::from),
-            input.database_name,
+            database_name,
+            database_names_json,
             input.username,
             i32::from(input.ssh_enabled),
             input.ssh_host,
@@ -273,12 +332,19 @@ pub async fn profile_update(
     push_field!(input.project, "project");
     push_field!(input.name, "name");
     push_field!(input.host, "host");
-    push_field!(input.database_name, "database_name");
     push_field!(input.username, "username");
     push_field!(input.notes, "notes");
     push_field!(input.ssh_host, "ssh_host");
     push_field!(input.ssh_user, "ssh_user");
     push_field!(input.environment, "environment");
+
+    if input.database_names.is_some() || input.database_name.is_some() {
+        let database_names = normalise_database_names(input.database_names, input.database_name)?;
+        sets.push("database_name = ?".to_string());
+        values.push(Box::new(database_names[0].clone()));
+        sets.push("database_names = ?".to_string());
+        values.push(Box::new(serde_json::to_string(&database_names)?));
+    }
 
     if let Some(port) = input.port {
         sets.push("port = ?".to_string());
@@ -378,6 +444,7 @@ pub async fn profile_list(db: State<'_, DbState>) -> Result<Vec<Profile>, DsmErr
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_lines)]
 pub async fn profile_test_connection(
     db: State<'_, DbState>,
     paths: State<'_, AppPaths>,
@@ -433,33 +500,46 @@ pub async fn profile_test_connection(
     };
 
     let start = std::time::Instant::now();
-    let result = match profile.db_type.as_str() {
-        "mysql" => {
-            test_mysql(
-                &paths,
-                &effective_host,
-                effective_port,
-                profile.username.as_deref().unwrap_or("root"),
-                creds.password.as_deref().unwrap_or(""),
-                &profile.database_name,
-            )
-            .await
+    let mut result = Ok(String::new());
+    for database_name in &profile.database_names {
+        let database_result = match profile.db_type.as_str() {
+            "mysql" => {
+                test_mysql(
+                    &paths,
+                    &effective_host,
+                    effective_port,
+                    profile.username.as_deref().unwrap_or("root"),
+                    creds.password.as_deref().unwrap_or(""),
+                    database_name,
+                )
+                .await
+            }
+            "postgresql" => {
+                test_postgresql(
+                    &effective_host,
+                    effective_port,
+                    profile.username.as_deref().unwrap_or("postgres"),
+                    creds.password.as_deref().unwrap_or(""),
+                    database_name,
+                )
+                .await
+            }
+            "sqlite" => test_sqlite(database_name),
+            _ => Err(DsmError::ConnectionError {
+                message: format!("Unsupported database type: {}", profile.db_type),
+            }),
+        };
+
+        match database_result {
+            Ok(version) => result = Ok(version),
+            Err(error) => {
+                result = Err(DsmError::ConnectionError {
+                    message: format!("{database_name}: {error}"),
+                });
+                break;
+            }
         }
-        "postgresql" => {
-            test_postgresql(
-                &effective_host,
-                effective_port,
-                profile.username.as_deref().unwrap_or("postgres"),
-                creds.password.as_deref().unwrap_or(""),
-                &profile.database_name,
-            )
-            .await
-        }
-        "sqlite" => test_sqlite(&profile.database_name),
-        _ => Err(DsmError::ConnectionError {
-            message: format!("Unsupported database type: {}", profile.db_type),
-        }),
-    };
+    }
     #[allow(clippy::cast_possible_truncation)]
     let latency_ms = start.elapsed().as_millis() as u64;
 
@@ -471,7 +551,15 @@ pub async fn profile_test_connection(
     match result {
         Ok(db_version) => Ok(ConnectionTestResult {
             success: true,
-            message: "Connection successful".to_string(),
+            message: format!(
+                "Connection successful for {} database{}",
+                profile.database_names.len(),
+                if profile.database_names.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            ),
             db_version: Some(db_version),
             latency_ms,
             error_kind: None,
@@ -620,6 +708,7 @@ fn row_to_snapshot(row: &rusqlite::Row) -> Result<Snapshot, rusqlite::Error> {
     Ok(Snapshot {
         id: row.get("id")?,
         profile_id: row.get("profile_id")?,
+        database_name: row.get("database_name").ok().flatten(),
         name: row.get("name")?,
         note: row.get("note")?,
         file_path: row.get("file_path")?,
@@ -627,6 +716,9 @@ fn row_to_snapshot(row: &rusqlite::Row) -> Result<Snapshot, rusqlite::Error> {
         db_version: row.get("db_version")?,
         dump_tool_version: row.get("dump_tool_version")?,
         checksum: row.get("checksum")?,
+        restore_test_status: row.get("restore_test_status")?,
+        restore_test_message: row.get("restore_test_message")?,
+        restore_tested_at: row.get("restore_tested_at")?,
         created_at: row.get("created_at")?,
         restored_at: row.get("restored_at")?,
         pinned: row.get::<_, i32>("pinned").unwrap_or(0) != 0,
@@ -676,6 +768,7 @@ pub async fn snapshot_create(
     paths: State<'_, AppPaths>,
     locks: State<'_, crate::db::OperationLocks>,
     profile_id: String,
+    database_name: Option<String>,
     name: String,
     note: Option<String>,
     tags: Option<Vec<String>>,
@@ -688,7 +781,7 @@ pub async fn snapshot_create(
     let snapshot_id = uuid::Uuid::new_v4().to_string();
 
     // Load profile (scoped to drop MutexGuard before any .await)
-    let profile = {
+    let mut profile = {
         let conn = lock_db(&db)?;
         conn.query_row(
             "SELECT * FROM profiles WHERE id = ?1",
@@ -700,6 +793,15 @@ pub async fn snapshot_create(
             other => DsmError::DatabaseError(other),
         })?
     };
+
+    if let Some(database_name) = database_name {
+        if !profile.database_names.contains(&database_name) {
+            return Err(DsmError::ValidationError {
+                message: format!("Database '{database_name}' is not part of this profile."),
+            });
+        }
+        profile.database_name = database_name;
+    }
 
     // Get credentials
     let creds = credentials::get_credentials(&profile_id)?;
@@ -969,6 +1071,13 @@ pub async fn snapshot_create(
                 output: String::new(),
             })??;
 
+    let _ = on_progress.send(SnapshotProgress::Phase {
+        phase: "restore_test".to_string(),
+        message: "Testing the snapshot against a temporary local database...".to_string(),
+    });
+    let restore_test =
+        crate::restore_test::verify_snapshot(&db, &paths, &profile.db_type, &output_path).await;
+
     // Save metadata
     let _ = on_progress.send(SnapshotProgress::Phase {
         phase: "saving".to_string(),
@@ -980,11 +1089,12 @@ pub async fn snapshot_create(
     {
         let conn = lock_db(&db)?;
         conn.execute(
-            "INSERT INTO snapshots (id, profile_id, name, note, file_path, size_bytes, db_version, dump_tool_version, checksum, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            "INSERT INTO snapshots (id, profile_id, database_name, name, note, file_path, size_bytes, db_version, dump_tool_version, checksum, restore_test_status, restore_test_message, restore_tested_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 snapshot_id,
                 profile_id,
+                profile.database_name,
                 name,
                 note,
                 relative_path,
@@ -992,6 +1102,9 @@ pub async fn snapshot_create(
                 dump_tool_version.as_ref().map(|v| v.1.as_str()),
                 dump_tool_version.as_ref().map(|v| v.0.as_str()),
                 checksum,
+                restore_test.status,
+                restore_test.message,
+                restore_test.tested_at,
                 now,
             ],
         )?;
@@ -1006,8 +1119,13 @@ pub async fn snapshot_create(
     }
 
     let duration_secs = start.elapsed().as_secs_f64();
+    let completed_message = match restore_test.status.as_str() {
+        "passed" => "Snapshot created and local restore test passed.",
+        "failed" => "Snapshot created, but the local restore test failed.",
+        _ => "Snapshot created; local restore testing is not configured.",
+    };
     let _ = on_progress.send(SnapshotProgress::Completed {
-        message: "Snapshot created successfully".to_string(),
+        message: completed_message.to_string(),
         size_bytes: Some(size_bytes),
         duration_secs,
     });
@@ -1015,6 +1133,7 @@ pub async fn snapshot_create(
     Ok(Snapshot {
         id: snapshot_id,
         profile_id,
+        database_name: Some(profile.database_name),
         name,
         note,
         file_path: relative_path,
@@ -1022,6 +1141,9 @@ pub async fn snapshot_create(
         db_version: dump_tool_version.as_ref().map(|v| v.1.clone()),
         dump_tool_version: dump_tool_version.map(|v| v.0),
         checksum: Some(checksum),
+        restore_test_status: restore_test.status,
+        restore_test_message: restore_test.message,
+        restore_tested_at: restore_test.tested_at,
         created_at: now,
         restored_at: None,
         pinned: false,
@@ -1237,21 +1359,30 @@ async fn create_pre_restore_snapshot(
                 output: String::new(),
             })??;
 
+    let restore_test =
+        crate::restore_test::verify_snapshot(db, paths, &profile.db_type, &output_path).await;
+    let restore_test_failed = restore_test.status == "failed";
+    let restore_test_failure = restore_test.message.clone();
+
     // Save metadata
     let now_str = now.to_rfc3339();
     {
         let conn = lock_db(db)?;
         conn.execute(
-            "INSERT INTO snapshots (id, profile_id, name, note, file_path, size_bytes, checksum, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO snapshots (id, profile_id, database_name, name, note, file_path, size_bytes, checksum, restore_test_status, restore_test_message, restore_tested_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 snapshot_id,
                 profile.id,
+                effective_db_name,
                 name,
                 note,
                 relative_path,
                 size_bytes.cast_signed(),
                 checksum,
+                restore_test.status,
+                restore_test.message,
+                restore_test.tested_at,
                 now_str,
             ],
         )?;
@@ -1261,6 +1392,15 @@ async fn create_pre_restore_snapshot(
             "INSERT OR IGNORE INTO snapshot_tags (snapshot_id, tag) VALUES (?1, ?2)",
             params![snapshot_id, "[auto] pre-restore"],
         )?;
+    }
+
+    if restore_test_failed {
+        return Err(DsmError::DumpError {
+            message: restore_test_failure.unwrap_or_else(|| {
+                "The pre-restore safety snapshot could not be restored locally.".to_string()
+            }),
+            output: String::new(),
+        });
     }
 
     Ok(snapshot_id)
@@ -1384,6 +1524,7 @@ pub async fn snapshot_restore(
     let effective_db_name = options
         .target_database_name
         .clone()
+        .or_else(|| snapshot.database_name.clone())
         .unwrap_or_else(|| profile.database_name.clone());
 
     // Get credentials for the effective profile
@@ -2036,6 +2177,21 @@ pub async fn settings_set(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn restore_test_settings_get(
+    db: State<'_, DbState>,
+) -> Result<crate::restore_test::RestoreTestSettings, DsmError> {
+    crate::restore_test::get_settings(&db)
+}
+
+#[tauri::command]
+pub async fn restore_test_settings_set(
+    db: State<'_, DbState>,
+    input: crate::restore_test::RestoreTestSettingsInput,
+) -> Result<(), DsmError> {
+    crate::restore_test::set_settings(&db, &input)
+}
+
 // -- Tagging Commands ---------------------------------------------------------
 
 #[tauri::command]
@@ -2125,9 +2281,10 @@ pub async fn snapshot_estimate_size(
     db: State<'_, DbState>,
     paths: State<'_, AppPaths>,
     profile_id: String,
+    database_name: Option<String>,
 ) -> Result<SizeEstimation, DsmError> {
     // Load profile
-    let profile = {
+    let mut profile = {
         let conn = lock_db(&db)?;
         conn.query_row(
             "SELECT * FROM profiles WHERE id = ?1",
@@ -2139,6 +2296,15 @@ pub async fn snapshot_estimate_size(
             other => DsmError::DatabaseError(other),
         })?
     };
+
+    if let Some(database_name) = database_name {
+        if !profile.database_names.contains(&database_name) {
+            return Err(DsmError::ValidationError {
+                message: format!("Database '{database_name}' is not part of this profile."),
+            });
+        }
+        profile.database_name = database_name;
+    }
 
     let creds = credentials::get_credentials(&profile_id)?;
 
@@ -2801,7 +2967,7 @@ pub async fn snapshot_restore_preview(
     snapshot_id: String,
 ) -> Result<RestorePreview, DsmError> {
     // Load snapshot and profile
-    let (snapshot, profile) = {
+    let (snapshot, mut profile) = {
         let conn = lock_db(&db)?;
         let snap = conn
             .query_row(
@@ -2819,6 +2985,10 @@ pub async fn snapshot_restore_preview(
             .map_err(|_| DsmError::ProfileNotFound(snap.profile_id.clone()))?;
         (snap, prof)
     };
+
+    if let Some(database_name) = snapshot.database_name.as_ref() {
+        profile.database_name.clone_from(database_name);
+    }
 
     let creds = credentials::get_credentials(&profile.id)?;
 
@@ -3090,9 +3260,11 @@ pub async fn snapshot_export_sql(
             }
         })
         .collect::<String>();
-    let db_name = profile
-        .as_ref()
-        .map_or("database", |p| p.database_name.as_str());
+    let db_name = snapshot
+        .database_name
+        .as_deref()
+        .or_else(|| profile.as_ref().map(|p| p.database_name.as_str()))
+        .unwrap_or("database");
     let output_filename = format!("{db_name}-{date_str}-{safe_name}.sql");
     let output_path = std::path::Path::new(&output_dir).join(&output_filename);
 
@@ -4000,6 +4172,24 @@ pub async fn snapshot_browse_content(
 mod tests {
     use super::*;
     use rusqlite::Connection;
+
+    #[test]
+    fn profile_database_names_are_trimmed_and_unique() {
+        let names = normalise_database_names(
+            Some(vec![
+                " scooda_landlord ".to_string(),
+                "scooda_tenant_1".to_string(),
+            ]),
+            None,
+        )
+        .unwrap();
+        assert_eq!(names, ["scooda_landlord", "scooda_tenant_1"]);
+
+        assert!(
+            normalise_database_names(Some(vec!["same".to_string(), "same".to_string()]), None,)
+                .is_err()
+        );
+    }
 
     #[test]
     fn snapshot_content_parsers_handle_supported_dump_formats_and_unicode() {

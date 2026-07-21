@@ -11,6 +11,7 @@ mod dump;
 mod ensure_db;
 mod error;
 mod progress;
+mod restore_test;
 mod scheduler;
 mod ssh;
 
@@ -75,6 +76,8 @@ pub fn run() {
             commands::storage_usage,
             commands::settings_list,
             commands::settings_set,
+            commands::restore_test_settings_get,
+            commands::restore_test_settings_set,
             // Tagging
             commands::snapshot_add_tags,
             commands::snapshot_remove_tag,

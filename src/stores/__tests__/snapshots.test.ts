@@ -2,9 +2,31 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { setActivePinia, createPinia } from "pinia";
 import { invoke } from "@tauri-apps/api/core";
 import { useSnapshotStore } from "../snapshots";
+import { useProfileStore } from "../profiles";
+import type { Snapshot } from "@/types";
 import type { RestoreRecord } from "@/types";
 
 const mockInvoke = vi.mocked(invoke);
+
+const makeSnapshot = (databaseName: string): Snapshot => ({
+  id: `snap-${databaseName}`,
+  profileId: "prof-1",
+  databaseName,
+  name: "Before migration",
+  note: null,
+  filePath: `project/${databaseName}.sql.gz`,
+  sizeBytes: 1024,
+  dbVersion: null,
+  dumpToolVersion: null,
+  checksum: null,
+  restoreTestStatus: "passed",
+  restoreTestMessage: "Local restore test passed.",
+  restoreTestedAt: "2026-01-01T00:00:00Z",
+  createdAt: "2026-01-01T00:00:00Z",
+  restoredAt: null,
+  pinned: false,
+  tags: [],
+});
 
 const mockRestoreRecord: RestoreRecord = {
   id: "rec-1",
@@ -20,6 +42,87 @@ describe("useSnapshotStore", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     vi.clearAllMocks();
+  });
+
+  describe("create", () => {
+    it("creates one snapshot for every database in the profile", async () => {
+      const profileStore = useProfileStore();
+      profileStore.profiles = [
+        {
+          id: "prof-1",
+          project: "Scooda",
+          name: "Local",
+          dbType: "mysql",
+          host: "127.0.0.1",
+          port: 3306,
+          databaseName: "scooda_landlord",
+          databaseNames: ["scooda_landlord", "scooda_tenant_1"],
+          username: "root",
+          sshEnabled: false,
+          sshHost: null,
+          sshPort: 22,
+          sshUser: null,
+          environment: "local",
+          notes: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      ];
+      mockInvoke
+        .mockResolvedValueOnce(makeSnapshot("scooda_landlord"))
+        .mockResolvedValueOnce(makeSnapshot("scooda_tenant_1"));
+
+      const store = useSnapshotStore();
+      const created = await store.create({ profileId: "prof-1", name: "Before migration" });
+
+      expect(created).toHaveLength(2);
+      expect(mockInvoke).toHaveBeenNthCalledWith(
+        1,
+        "snapshot_create",
+        expect.objectContaining({ databaseName: "scooda_landlord" }),
+      );
+      expect(mockInvoke).toHaveBeenNthCalledWith(
+        2,
+        "snapshot_create",
+        expect.objectContaining({ databaseName: "scooda_tenant_1" }),
+      );
+    });
+
+    it("attempts the remaining databases when one snapshot fails", async () => {
+      const profileStore = useProfileStore();
+      profileStore.profiles = [
+        {
+          id: "prof-1",
+          project: "Scooda",
+          name: "Local",
+          dbType: "mysql",
+          host: "127.0.0.1",
+          port: 3306,
+          databaseName: "scooda_landlord",
+          databaseNames: ["scooda_landlord", "scooda_tenant_1"],
+          username: "root",
+          sshEnabled: false,
+          sshHost: null,
+          sshPort: 22,
+          sshUser: null,
+          environment: "local",
+          notes: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        },
+      ];
+      mockInvoke
+        .mockRejectedValueOnce(new Error("database unavailable"))
+        .mockResolvedValueOnce(makeSnapshot("scooda_tenant_1"));
+
+      const store = useSnapshotStore();
+      await expect(store.create({ profileId: "prof-1", name: "Before migration" })).rejects.toThrow(
+        "1 of 2 database snapshots created",
+      );
+
+      expect(mockInvoke).toHaveBeenCalledTimes(2);
+      expect(store.snapshots.map((snapshot) => snapshot.databaseName)).toEqual(["scooda_tenant_1"]);
+    });
   });
 
   describe("restore", () => {
@@ -93,6 +196,7 @@ describe("useSnapshotStore", () => {
         {
           id: "snap-1",
           profileId: "prof-1",
+          databaseName: "mydb",
           name: "Test",
           note: null,
           filePath: "test/snap-1.sql.gz",
@@ -100,6 +204,9 @@ describe("useSnapshotStore", () => {
           dbVersion: null,
           dumpToolVersion: null,
           checksum: null,
+          restoreTestStatus: "not_configured",
+          restoreTestMessage: null,
+          restoreTestedAt: null,
           createdAt: "2026-01-01T00:00:00Z",
           restoredAt: null,
           pinned: false,

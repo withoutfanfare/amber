@@ -42,6 +42,7 @@ impl Drop for ProfileOpGuard {
 }
 
 /// Embedded migrations -- add new `M::up()` entries for schema changes.
+#[allow(clippy::too_many_lines)]
 fn migrations() -> Migrations<'static> {
     Migrations::new(vec![
         M::up(
@@ -143,6 +144,18 @@ fn migrations() -> Migrations<'static> {
                 created_at        TEXT NOT NULL,
                 updated_at        TEXT NOT NULL
             );",
+        ),
+        // Migration 10: one profile can snapshot multiple databases on the same connection
+        M::up(
+            "ALTER TABLE profiles ADD COLUMN database_names TEXT NOT NULL DEFAULT '[]';
+             ALTER TABLE snapshots ADD COLUMN database_name TEXT;",
+        ),
+        // Migration 11: record whether each snapshot can be restored locally
+        M::up(
+            "ALTER TABLE snapshots ADD COLUMN restore_test_status TEXT NOT NULL DEFAULT 'not_configured'
+                 CHECK(restore_test_status IN ('passed','failed','not_configured'));
+             ALTER TABLE snapshots ADD COLUMN restore_test_message TEXT;
+             ALTER TABLE snapshots ADD COLUMN restore_tested_at TEXT;",
         ),
     ])
 }

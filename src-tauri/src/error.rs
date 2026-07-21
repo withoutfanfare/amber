@@ -46,6 +46,9 @@ pub enum DsmError {
 
     #[error("Insufficient disk space: {message}")]
     InsufficientDiskSpace { message: String },
+
+    #[error("Invalid profile: {message}")]
+    ValidationError { message: String },
 }
 
 /// Structured JSON payload sent to the frontend for all errors.
@@ -76,6 +79,7 @@ impl Serialize for DsmError {
             Self::DbTypeMismatch { .. } => "dbTypeMismatch",
             Self::OperationInProgress { .. } => "operationInProgress",
             Self::InsufficientDiskSpace { .. } => "insufficientDiskSpace",
+            Self::ValidationError { .. } => "validationError",
         };
 
         ErrorPayload {

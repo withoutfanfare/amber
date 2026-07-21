@@ -17,6 +17,7 @@ import type {
   OrphanedFile,
 } from "@/types";
 import { useRestoreHistoryStore } from "./restoreHistory";
+import { useProfileStore } from "./profiles";
 
 export const useSnapshotStore = defineStore("snapshots", () => {
   // --- State ---
@@ -97,53 +98,72 @@ export const useSnapshotStore = defineStore("snapshots", () => {
     }
   }
 
-  async function create(payload: SnapshotCreatePayload): Promise<Snapshot> {
+  async function create(payload: SnapshotCreatePayload): Promise<Snapshot[]> {
     creating.value = true;
     progress.value = null;
     error.value = null;
     try {
-      const onProgress = new Channel<SnapshotProgress>();
-      onProgress.onmessage = (msg) => {
-        switch (msg.event) {
-          case "started":
-            progress.value = { phase: "started", message: "Creating snapshot...", percentage: 0 };
-            break;
-          case "phase":
-            progress.value = {
-              phase: msg.data.phase,
-              message: msg.data.message,
-              percentage: progress.value?.percentage ?? 0,
-            };
-            break;
-          case "progress":
-            progress.value = { ...progress.value!, percentage: msg.data.percentage };
-            break;
-          case "tableProgress":
-            progress.value = {
-              phase: "dumping",
-              message: `Dumping table: ${msg.data.currentTable}`,
-              percentage: progress.value?.percentage ?? 0,
-              currentTable: msg.data.currentTable,
-              bytesProcessed: msg.data.bytesProcessed,
-            };
-            break;
-          case "completed":
-            progress.value = { phase: "completed", message: msg.data.message, percentage: 100 };
-            break;
-          case "failed":
-            progress.value = null;
-            break;
+      const profile = useProfileStore().profiles.find((item) => item.id === payload.profileId);
+      if (!profile) throw new Error("Profile not found");
+
+      const created: Snapshot[] = [];
+      const failures: string[] = [];
+      for (const databaseName of profile.databaseNames) {
+        const onProgress = new Channel<SnapshotProgress>();
+        onProgress.onmessage = (msg) => {
+          switch (msg.event) {
+            case "started":
+              progress.value = { phase: "started", message: "Creating snapshot...", percentage: 0 };
+              break;
+            case "phase":
+              progress.value = {
+                phase: msg.data.phase,
+                message: msg.data.message,
+                percentage: progress.value?.percentage ?? 0,
+              };
+              break;
+            case "progress":
+              progress.value = { ...progress.value!, percentage: msg.data.percentage };
+              break;
+            case "tableProgress":
+              progress.value = {
+                phase: "dumping",
+                message: `Dumping table: ${msg.data.currentTable}`,
+                percentage: progress.value?.percentage ?? 0,
+                currentTable: msg.data.currentTable,
+                bytesProcessed: msg.data.bytesProcessed,
+              };
+              break;
+            case "completed":
+              progress.value = { phase: "completed", message: msg.data.message, percentage: 100 };
+              break;
+            case "failed":
+              progress.value = null;
+              break;
+          }
+        };
+
+        try {
+          const snapshot = await invoke<Snapshot>("snapshot_create", {
+            profileId: payload.profileId,
+            databaseName,
+            name: payload.name,
+            note: payload.note ?? null,
+            tags: payload.tags ?? null,
+            onProgress,
+          });
+          created.push(snapshot);
+          snapshots.value.unshift(snapshot);
+        } catch (e) {
+          failures.push(`${databaseName}: ${String(e)}`);
         }
-      };
-      const snapshot = await invoke<Snapshot>("snapshot_create", {
-        profileId: payload.profileId,
-        name: payload.name,
-        note: payload.note ?? null,
-        tags: payload.tags ?? null,
-        onProgress,
-      });
-      snapshots.value.unshift(snapshot);
-      return snapshot;
+      }
+      if (failures.length > 0) {
+        throw new Error(
+          `${created.length} of ${profile.databaseNames.length} database snapshots created. ${failures.join(" ")}`,
+        );
+      }
+      return created;
     } catch (e) {
       error.value = String(e);
       throw e;
@@ -234,7 +254,28 @@ export const useSnapshotStore = defineStore("snapshots", () => {
   }
 
   async function estimateSize(profileId: string): Promise<SizeEstimation> {
-    return await invoke<SizeEstimation>("snapshot_estimate_size", { profileId });
+    const profile = useProfileStore().profiles.find((item) => item.id === profileId);
+    if (!profile) throw new Error("Profile not found");
+
+    const estimates = await Promise.all(
+      profile.databaseNames.map((databaseName) =>
+        invoke<SizeEstimation>("snapshot_estimate_size", { profileId, databaseName }),
+      ),
+    );
+    const estimatedRawBytes = estimates.reduce((total, item) => total + item.estimatedRawBytes, 0);
+    const estimatedCompressedBytes = estimates.reduce(
+      (total, item) => total + item.estimatedCompressedBytes,
+      0,
+    );
+
+    return {
+      estimatedRawBytes,
+      estimatedCompressedBytes,
+      compressionRatio: estimatedRawBytes ? estimatedCompressedBytes / estimatedRawBytes : 0.2,
+      estimationMethod: estimates.every((item) => item.estimationMethod === "historical")
+        ? "historical"
+        : "default",
+    };
   }
 
   async function compareSchema(snapshotAId: string, snapshotBId: string): Promise<SchemaDiff> {

@@ -22,7 +22,7 @@
         <ol class="list-inside list-decimal space-y-2 text-sm leading-relaxed text-text-secondary">
           <li>
             <strong class="text-text-primary">Create a connection profile</strong> &mdash; save your
-            database credentials once.
+            project connection and its database list once.
           </li>
           <li>
             <strong class="text-text-primary">Take a snapshot</strong> &mdash; capture a compressed
@@ -39,9 +39,9 @@
       <SCard>
         <h2 class="mb-3 text-base font-semibold text-text-primary">Connection Profiles</h2>
         <p class="mb-4 text-sm leading-relaxed text-text-secondary">
-          A connection profile stores everything Amber needs to connect to one of your databases.
-          Each profile belongs to a project, making it easy to organise multiple databases across
-          different codebases.
+          A connection profile represents a project and stores everything Amber needs to connect to
+          one or more databases on the same server. This works for projects with a landlord database
+          and multiple tenant databases as well as single-database projects.
         </p>
 
         <h3 class="mb-2 text-xs font-semibold tracking-wide text-text-tertiary uppercase">
@@ -70,8 +70,9 @@
             dump/restore tool is used.
           </li>
           <li>
-            <strong class="text-text-primary">Host, port, database name</strong> &mdash; standard
-            connection details. SQLite profiles only need a file path.
+            <strong class="text-text-primary">Host, port, database names</strong> &mdash; standard
+            connection details and every database Amber should snapshot. SQLite profiles use file
+            paths instead of database names.
           </li>
           <li>
             <strong class="text-text-primary">Username &amp; password</strong> &mdash; credentials
@@ -106,8 +107,14 @@
         <ul class="space-y-1.5 text-sm leading-relaxed text-text-secondary">
           <li>
             <strong class="text-text-primary">Create</strong> &mdash; select a profile and click
-            "New Snapshot". Amber streams the dump to a
-            <code class="text-xs text-accent">.sql.gz</code> file while showing real-time progress.
+            "New Snapshot". Amber creates a separate compressed snapshot for every database in the
+            project while showing real-time progress.
+          </li>
+          <li>
+            <strong class="text-text-primary">Test</strong> &mdash; each new snapshot is imported
+            into a randomly named temporary local database and then deleted. Configure local MySQL
+            or PostgreSQL credentials in Settings; these checks are fixed to
+            <code class="text-xs text-accent">127.0.0.1</code> and never use project hosts or SSH.
           </li>
           <li>
             <strong class="text-text-primary">Restore</strong> &mdash; pick any snapshot from the

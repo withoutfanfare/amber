@@ -11,6 +11,7 @@
     RetentionEnforcementResult,
     ScheduleConfig,
     ScheduleInterval,
+    RestoreTestSettings,
   } from "@/types";
 
   const router = useRouter();
@@ -34,6 +35,16 @@
   const scheduleNextDue = ref<string | null>(null);
   const scheduleSaving = ref(false);
 
+  const restoreTestMysqlEnabled = ref(false);
+  const restoreTestMysqlPort = ref(3306);
+  const restoreTestMysqlUsername = ref("root");
+  const restoreTestMysqlPassword = ref("");
+  const restoreTestPostgresqlEnabled = ref(false);
+  const restoreTestPostgresqlPort = ref(5432);
+  const restoreTestPostgresqlUsername = ref("postgres");
+  const restoreTestPostgresqlPassword = ref("");
+  const restoreTestSaving = ref(false);
+
   onMounted(async () => {
     await settingsStore.fetchAll();
     if (profileStore.profiles.length === 0) {
@@ -41,6 +52,18 @@
     }
     autoPruneEnabled.value = settingsStore.get("auto_prune_enabled", "false") === "true";
     autoPruneDays.value = parseInt(settingsStore.get("auto_prune_days", "30"), 10) || 30;
+
+    try {
+      const restoreSettings = await invoke<RestoreTestSettings>("restore_test_settings_get");
+      restoreTestMysqlEnabled.value = restoreSettings.mysql.enabled;
+      restoreTestMysqlPort.value = restoreSettings.mysql.port;
+      restoreTestMysqlUsername.value = restoreSettings.mysql.username;
+      restoreTestPostgresqlEnabled.value = restoreSettings.postgresql.enabled;
+      restoreTestPostgresqlPort.value = restoreSettings.postgresql.port;
+      restoreTestPostgresqlUsername.value = restoreSettings.postgresql.username;
+    } catch (e) {
+      toast.error(`Failed to load local restore-test settings: ${e}`);
+    }
   });
 
   const snapshotDir = computed(() =>
@@ -205,6 +228,31 @@
       retentionEnforcing.value = false;
     }
   }
+
+  async function saveRestoreTestSettings() {
+    restoreTestSaving.value = true;
+    try {
+      await invoke("restore_test_settings_set", {
+        input: {
+          mysqlEnabled: restoreTestMysqlEnabled.value,
+          mysqlPort: Number(restoreTestMysqlPort.value),
+          mysqlUsername: restoreTestMysqlUsername.value,
+          mysqlPassword: restoreTestMysqlPassword.value || null,
+          postgresqlEnabled: restoreTestPostgresqlEnabled.value,
+          postgresqlPort: Number(restoreTestPostgresqlPort.value),
+          postgresqlUsername: restoreTestPostgresqlUsername.value,
+          postgresqlPassword: restoreTestPostgresqlPassword.value || null,
+        },
+      });
+      restoreTestMysqlPassword.value = "";
+      restoreTestPostgresqlPassword.value = "";
+      toast.success("Local restore-test settings saved.");
+    } catch (e) {
+      toast.error(`Failed to save local restore-test settings: ${e}`);
+    } finally {
+      restoreTestSaving.value = false;
+    }
+  }
 </script>
 
 <template>
@@ -254,6 +302,94 @@
           </div>
         </SCard>
       </div>
+
+      <SCard>
+        <h3 class="mb-2 text-sm font-semibold text-text-primary">Automatic Restore Testing</h3>
+        <p class="mb-4 text-sm text-text-secondary">
+          Every new snapshot is imported into a randomly named temporary database, checked, and
+          deleted. These tests are hard-wired to <code class="text-xs">127.0.0.1</code>; project
+          hosts, remote credentials, and SSH tunnels are never used.
+        </p>
+
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div class="space-y-3 rounded-lg border border-border-subtle p-4">
+            <label class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="restoreTestMysqlEnabled"
+                type="checkbox"
+                class="h-4 w-4 rounded border-border accent-accent"
+              />
+              <span class="text-sm font-medium text-text-primary">Test MySQL snapshots</span>
+            </label>
+            <SFormField label="Local port">
+              <SInput
+                v-model="restoreTestMysqlPort"
+                type="number"
+                :disabled="!restoreTestMysqlEnabled"
+              />
+            </SFormField>
+            <SFormField label="Local username">
+              <SInput v-model="restoreTestMysqlUsername" :disabled="!restoreTestMysqlEnabled" />
+            </SFormField>
+            <SFormField label="Local password">
+              <SInput
+                v-model="restoreTestMysqlPassword"
+                type="password"
+                placeholder="Leave blank to keep existing"
+                :disabled="!restoreTestMysqlEnabled"
+              />
+            </SFormField>
+          </div>
+
+          <div class="space-y-3 rounded-lg border border-border-subtle p-4">
+            <label class="flex cursor-pointer items-center gap-2">
+              <input
+                v-model="restoreTestPostgresqlEnabled"
+                type="checkbox"
+                class="h-4 w-4 rounded border-border accent-accent"
+              />
+              <span class="text-sm font-medium text-text-primary">Test PostgreSQL snapshots</span>
+            </label>
+            <SFormField label="Local port">
+              <SInput
+                v-model="restoreTestPostgresqlPort"
+                type="number"
+                :disabled="!restoreTestPostgresqlEnabled"
+              />
+            </SFormField>
+            <SFormField label="Local username">
+              <SInput
+                v-model="restoreTestPostgresqlUsername"
+                :disabled="!restoreTestPostgresqlEnabled"
+              />
+            </SFormField>
+            <SFormField label="Local password">
+              <SInput
+                v-model="restoreTestPostgresqlPassword"
+                type="password"
+                placeholder="Leave blank to keep existing"
+                :disabled="!restoreTestPostgresqlEnabled"
+              />
+            </SFormField>
+          </div>
+        </div>
+
+        <p class="mt-3 text-xs text-text-tertiary">
+          SQLite snapshots are always tested using a temporary file inside Amber's local app data.
+          MySQL and PostgreSQL users need permission to create and drop local databases. Passwords
+          are stored in macOS Keychain.
+        </p>
+        <div class="mt-4">
+          <SButton
+            variant="primary"
+            size="sm"
+            :loading="restoreTestSaving"
+            @click="saveRestoreTestSettings"
+          >
+            Save Restore-Test Settings
+          </SButton>
+        </div>
+      </SCard>
 
       <!-- Scheduled Snapshots — full width -->
       <SCard>

@@ -2,7 +2,12 @@
   import { ref, computed } from "vue";
   import { SCard, SBadge, SButton } from "@stuntrocket/ui";
   import ConnectionTestIndicator from "./ConnectionTestIndicator.vue";
-  import type { Profile, ConnectionTestResult, HealthCheckResult, OperationStatusResult } from "@/types";
+  import type {
+    Profile,
+    ConnectionTestResult,
+    HealthCheckResult,
+    OperationStatusResult,
+  } from "@/types";
 
   const props = defineProps<{
     profile: Profile;
@@ -49,13 +54,11 @@
     return props.profile.environment ? (map[props.profile.environment] ?? "default") : "default";
   });
 
-  const connectionString = computed(() => {
-    if (props.profile.dbType === "sqlite") {
-      return props.profile.databaseName;
-    }
+  const connectionStrings = computed(() => {
+    if (props.profile.dbType === "sqlite") return props.profile.databaseNames;
     const host = props.profile.host ?? "127.0.0.1";
     const port = props.profile.port ? `:${props.profile.port}` : "";
-    return `${host}${port}/${props.profile.databaseName}`;
+    return props.profile.databaseNames.map((database) => `${host}${port}/${database}`);
   });
 
   async function handleTest() {
@@ -132,6 +135,11 @@
         profile.environment
       }}</SBadge>
       <SBadge v-if="profile.sshEnabled" variant="accent">SSH</SBadge>
+      <SBadge variant="default">
+        {{ profile.databaseNames.length }} database{{
+          profile.databaseNames.length === 1 ? "" : "s"
+        }}
+      </SBadge>
     </div>
 
     <!-- Operation in progress indicator -->
@@ -139,13 +147,27 @@
       v-if="operationStatus?.busy"
       class="mb-2 flex items-center gap-1.5 rounded bg-warning/10 px-2 py-1 text-xs text-warning"
     >
-      <svg class="h-3 w-3 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg
+        class="h-3 w-3 animate-spin"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+      >
         <path d="M21 12a9 9 0 1 1-6.219-8.56" />
       </svg>
       Operation in progress
     </div>
 
-    <p class="mb-2 font-mono text-sm text-text-secondary">{{ connectionString }}</p>
+    <div class="mb-2 space-y-1">
+      <p
+        v-for="connectionString in connectionStrings"
+        :key="connectionString"
+        class="truncate font-mono text-sm text-text-secondary"
+      >
+        {{ connectionString }}
+      </p>
+    </div>
 
     <p v-if="profile.notes" class="mb-4 line-clamp-2 text-xs text-text-tertiary">
       {{ profile.notes }}

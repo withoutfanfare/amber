@@ -22,10 +22,14 @@
   const diskSpace = ref<DiskSpaceInfo | null>(null);
   const operationBusy = ref(false);
 
+  const selectedProfile = computed(() =>
+    profileStore.profiles.find((profile) => profile.id === selectedProfileId.value),
+  );
+
   const profileOptions = computed(() =>
     profileStore.profiles.map((p) => ({
       value: p.id,
-      label: `${p.project} / ${p.name} (${p.dbType})`,
+      label: `${p.project} / ${p.name} (${p.databaseNames.length} database${p.databaseNames.length === 1 ? "" : "s"})`,
     })),
   );
 
@@ -102,13 +106,29 @@
       .filter(Boolean);
 
     try {
-      await snapshotStore.create({
+      const snapshots = await snapshotStore.create({
         profileId: selectedProfileId.value,
         name: name.value.trim(),
         note: note.value.trim() || undefined,
         tags: tags.length > 0 ? tags : undefined,
       });
-      toast.success("Snapshot created successfully.");
+      const failedTests = snapshots.filter((snapshot) => snapshot.restoreTestStatus === "failed");
+      const unconfiguredTests = snapshots.filter(
+        (snapshot) => snapshot.restoreTestStatus === "not_configured",
+      );
+      if (failedTests.length > 0) {
+        toast.error(
+          `${snapshots.length} snapshot(s) created, but ${failedTests.length} local restore test(s) failed.`,
+        );
+      } else if (unconfiguredTests.length > 0) {
+        toast.info(
+          `${snapshots.length} snapshot(s) created. Configure local restore testing in Settings to test future snapshots.`,
+        );
+      } else {
+        toast.success(
+          `${snapshots.length} snapshot(s) created and restored successfully in testing.`,
+        );
+      }
       router.push("/snapshots");
     } catch (e) {
       toast.error(`Failed to create snapshot: ${e}`);
@@ -146,6 +166,12 @@
           </option>
         </SSelect>
       </SFormField>
+
+      <p v-if="selectedProfile" class="text-xs text-text-tertiary">
+        This creates {{ selectedProfile.databaseNames.length }} snapshot{{
+          selectedProfile.databaseNames.length === 1 ? "" : "s"
+        }}, one for each database in the profile.
+      </p>
 
       <!-- Size estimation -->
       <div
@@ -208,7 +234,13 @@
         v-else-if="diskSpace && diskSpace.sufficient"
         class="flex items-center gap-2 rounded-lg bg-success/5 px-3 py-2 text-xs text-success"
       >
-        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg
+          class="h-3.5 w-3.5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+        >
           <path d="M20 6 9 17l-5-5" />
         </svg>
         {{ formatSize(diskSpace.availableBytes) }} available
@@ -290,9 +322,17 @@
           variant="primary"
           size="md"
           :loading="snapshotStore.creating"
-          :disabled="!selectedProfileId || !name.trim() || (diskSpace && !diskSpace.sufficient) || operationBusy"
+          :disabled="
+            !selectedProfileId ||
+            !name.trim() ||
+            (diskSpace && !diskSpace.sufficient) ||
+            operationBusy
+          "
+          @click="handleSubmit"
         >
-          Create Snapshot
+          Create {{ selectedProfile?.databaseNames.length ?? 1 }} Snapshot{{
+            (selectedProfile?.databaseNames.length ?? 1) === 1 ? "" : "s"
+          }}
         </SButton>
       </div>
     </form>
