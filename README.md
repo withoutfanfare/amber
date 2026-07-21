@@ -1,5 +1,9 @@
 # Database Snapshot Manager
 
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" alt="Amber app icon" width="144" height="144">
+</p>
+
 > Git-like version control for local development databases. Built with Tauri 2 + Rust for developers who need confidence before every migration.
 
 ## Features
