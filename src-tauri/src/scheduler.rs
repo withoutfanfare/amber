@@ -58,7 +58,7 @@ async fn check_and_run(app: &tauri::AppHandle) -> Result<(), String> {
 
     for config in configs {
         if is_due(&config, &now_str) {
-            match create_scheduled_snapshot(app, &config).await {
+            match create_scheduled_snapshots(app, &config).await {
                 Ok(()) => {
                     update_schedule_after_success(app, &config.profile_id, &config.interval)?;
                 }
@@ -85,11 +85,57 @@ fn is_due(config: &ScheduleConfig, now_str: &str) -> bool {
     now_str >= next_due.as_str()
 }
 
+async fn create_scheduled_snapshots(
+    app: &tauri::AppHandle,
+    config: &ScheduleConfig,
+) -> Result<(), DsmError> {
+    let database_names = {
+        let db = app.state::<DbState>();
+        let conn = lock_db(&db)?;
+        conn.query_row(
+            "SELECT database_name, database_names FROM profiles WHERE id = ?1",
+            params![config.profile_id],
+            |row| {
+                let primary = row.get::<_, String>(0)?;
+                let json = row.get::<_, String>(1)?;
+                let mut names = serde_json::from_str::<Vec<String>>(&json).unwrap_or_default();
+                if names.is_empty() {
+                    names.push(primary);
+                }
+                Ok(names)
+            },
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => {
+                DsmError::ProfileNotFound(config.profile_id.clone())
+            }
+            other => DsmError::DatabaseError(other),
+        })?
+    };
+
+    let mut failures = Vec::new();
+    for database_name in database_names {
+        if let Err(error) = create_scheduled_snapshot(app, config, &database_name).await {
+            failures.push(format!("{database_name}: {error}"));
+        }
+    }
+
+    if failures.is_empty() {
+        Ok(())
+    } else {
+        Err(DsmError::DumpError {
+            message: "One or more project databases could not be snapshotted.".to_string(),
+            output: failures.join("\n"),
+        })
+    }
+}
+
 /// Create a snapshot for a scheduled profile.
 #[allow(clippy::too_many_lines)]
 async fn create_scheduled_snapshot(
     app: &tauri::AppHandle,
     config: &ScheduleConfig,
+    database_name: &str,
 ) -> Result<(), DsmError> {
     let db = app.state::<DbState>();
     let paths = app.state::<AppPaths>();
@@ -124,7 +170,9 @@ async fn create_scheduled_snapshot(
             crate::db::ProfileOpGuard { slot }
         } else {
             // Another operation in progress — skip this cycle
-            return Ok(());
+            return Err(DsmError::OperationInProgress {
+                operation: "scheduled snapshot".to_string(),
+            });
         }
     };
 
@@ -132,14 +180,13 @@ async fn create_scheduled_snapshot(
     let profile = {
         let conn = lock_db(&db)?;
         conn.query_row(
-            "SELECT id, project, database_name, db_type FROM profiles WHERE id = ?1",
+            "SELECT id, project, db_type FROM profiles WHERE id = ?1",
             params![config.profile_id],
             |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, String>(3)?,
                 ))
             },
         )
@@ -151,7 +198,7 @@ async fn create_scheduled_snapshot(
         })?
     };
 
-    let (profile_id, project, database_name, db_type) = profile;
+    let (profile_id, project, db_type) = profile;
 
     // Get credentials
     let creds = crate::credentials::get_credentials(&profile_id)?;
@@ -234,7 +281,7 @@ async fn create_scheduled_snapshot(
                 full_profile.username.as_deref().unwrap_or("root"),
                 creds.password.as_deref().unwrap_or(""),
             )?;
-            let mut cmd = crate::dump::build_mysqldump_command(&df, &database_name);
+            let mut cmd = crate::dump::build_mysqldump_command(&df, database_name);
             cmd.stdout(std::process::Stdio::piped());
             cmd.stderr(std::process::Stdio::piped());
 
@@ -278,7 +325,7 @@ async fn create_scheduled_snapshot(
                 effective_port,
                 full_profile.username.as_deref().unwrap_or("postgres"),
                 creds.password.as_deref().unwrap_or(""),
-                &database_name,
+                database_name,
             );
             cmd.stdout(std::process::Stdio::piped());
             cmd.stderr(std::process::Stdio::piped());
@@ -319,7 +366,7 @@ async fn create_scheduled_snapshot(
             let temp_db_path = paths.tmp_dir.join(format!("{snapshot_id}.db"));
 
             let mut cmd = crate::dump::build_sqlite_dump_command(
-                &database_name,
+                database_name,
                 &temp_db_path.to_string_lossy(),
             );
 
@@ -379,6 +426,9 @@ async fn create_scheduled_snapshot(
                 output: String::new(),
             })??;
 
+    let restore_test =
+        crate::restore_test::verify_snapshot(&db, &paths, &db_type, &output_path).await;
+
     // Save snapshot metadata with scheduled tags
     let now_str = now.to_rfc3339();
     let tags = vec![
@@ -388,16 +438,20 @@ async fn create_scheduled_snapshot(
     {
         let conn = lock_db(&db)?;
         conn.execute(
-            "INSERT INTO snapshots (id, profile_id, name, note, file_path, size_bytes, checksum, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            "INSERT INTO snapshots (id, profile_id, database_name, name, note, file_path, size_bytes, checksum, restore_test_status, restore_test_message, restore_tested_at, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             params![
                 snapshot_id,
                 profile_id,
+                database_name,
                 name,
                 format!("Automatic {} snapshot", config.interval),
                 relative_path,
                 size_bytes.cast_signed(),
                 checksum,
+                restore_test.status,
+                restore_test.message,
+                restore_test.tested_at,
                 now_str,
             ],
         )?;
@@ -411,8 +465,8 @@ async fn create_scheduled_snapshot(
     }
 
     eprintln!(
-        "[scheduler] Created scheduled snapshot for profile {} ({})",
-        profile_id, config.interval
+        "[scheduler] Created scheduled snapshot for profile {} ({}, restore test: {})",
+        profile_id, config.interval, restore_test.status
     );
 
     Ok(())

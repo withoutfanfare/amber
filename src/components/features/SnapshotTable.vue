@@ -136,6 +136,7 @@
             </th>
             <th class="px-3 py-2.5 font-semibold">Tags</th>
             <th class="px-3 py-2.5 font-semibold">Profile</th>
+            <th class="px-3 py-2.5 font-semibold">Database</th>
             <th class="sortable-header px-3 py-2.5 font-semibold" @click="toggleSort('createdAt')">
               Created{{ sortIndicator("createdAt") }}
             </th>
@@ -218,6 +219,9 @@
             <td class="px-3 py-3 text-text-secondary">
               {{ getProfileName(snapshot.profileId) }}
             </td>
+            <td class="px-3 py-3 font-mono text-xs text-text-secondary">
+              {{ snapshot.databaseName ?? "—" }}
+            </td>
             <td class="px-3 py-3 whitespace-nowrap text-text-secondary">
               {{ formatDate(snapshot.createdAt) }}
             </td>
@@ -234,6 +238,29 @@
             <!-- Status (integrity + pinned) -->
             <td class="px-3 py-3 text-center">
               <div class="flex items-center justify-center gap-1">
+                <span
+                  v-if="snapshot.restoreTestStatus === 'passed'"
+                  class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-success/10 text-xs font-semibold text-success"
+                  :title="snapshot.restoreTestMessage ?? 'Local restore test passed'"
+                  :aria-label="snapshot.restoreTestMessage ?? 'Local restore test passed'"
+                  >R</span
+                >
+                <span
+                  v-else-if="snapshot.restoreTestStatus === 'failed'"
+                  class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-danger/10 text-xs font-semibold text-danger"
+                  :title="snapshot.restoreTestMessage ?? 'Local restore test failed'"
+                  :aria-label="snapshot.restoreTestMessage ?? 'Local restore test failed'"
+                  >R</span
+                >
+                <span
+                  v-else
+                  class="inline-flex h-5 w-5 items-center justify-center rounded-full bg-surface-raised text-xs font-semibold text-text-tertiary"
+                  :title="snapshot.restoreTestMessage ?? 'Local restore testing not configured'"
+                  :aria-label="
+                    snapshot.restoreTestMessage ?? 'Local restore testing not configured'
+                  "
+                  >R</span
+                >
                 <button
                   v-if="snapshot.checksum"
                   class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-success/80 transition-colors hover:bg-success/10 hover:text-success"
@@ -328,8 +355,8 @@
                 <SButton
                   variant="ghost"
                   size="sm"
-                  @click="emit('reveal', snapshot)"
                   title="Show in Finder"
+                  @click="emit('reveal', snapshot)"
                 >
                   <svg
                     class="h-3.5 w-3.5"
