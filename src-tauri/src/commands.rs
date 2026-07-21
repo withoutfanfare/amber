@@ -2640,11 +2640,9 @@ pub async fn snapshot_compare_schema(
 
     // Extract schema from both snapshots by decompressing and parsing CREATE TABLE statements
     let schema_a =
-        extract_schema_from_snapshot(&paths.snapshots_dir.join(&snap_a.file_path), &paths.tmp_dir)
-            .await?;
+        extract_schema_from_snapshot(&paths.snapshots_dir.join(&snap_a.file_path)).await?;
     let schema_b =
-        extract_schema_from_snapshot(&paths.snapshots_dir.join(&snap_b.file_path), &paths.tmp_dir)
-            .await?;
+        extract_schema_from_snapshot(&paths.snapshots_dir.join(&snap_b.file_path)).await?;
 
     let tables_a: std::collections::HashSet<&str> = schema_a.keys().map(String::as_str).collect();
     let tables_b: std::collections::HashSet<&str> = schema_b.keys().map(String::as_str).collect();
@@ -2698,21 +2696,20 @@ pub async fn snapshot_compare_schema(
 /// Extract table-to-columns map from a compressed SQL snapshot by parsing CREATE TABLE statements.
 async fn extract_schema_from_snapshot(
     gz_path: &std::path::Path,
-    tmp_dir: &std::path::Path,
 ) -> Result<HashMap<String, Vec<String>>, DsmError> {
     let gz = gz_path.to_path_buf();
-    let tmp = tmp_dir.to_path_buf();
 
     tokio::task::spawn_blocking(move || {
-        let mut sql_content = Vec::new();
-        crate::compress::decompress_to_writer(&gz, &mut sql_content)?;
-        let sql_text = String::from_utf8_lossy(&sql_content);
-
         let mut tables: HashMap<String, Vec<String>> = HashMap::new();
         let mut current_table: Option<String> = None;
         let mut current_columns: Vec<String> = Vec::new();
 
-        for line in sql_text.lines() {
+        for line in crate::compress::decompressed_lines(
+            &gz,
+            MAX_SNAPSHOT_PARSE_BYTES,
+            MAX_SNAPSHOT_LINE_BYTES,
+        )? {
+            let line = line?;
             let trimmed = line.trim();
             // Match CREATE TABLE patterns
             if let Some(name) = parse_create_table_line(trimmed) {
@@ -2746,9 +2743,6 @@ async fn extract_schema_from_snapshot(
                 }
             }
         }
-
-        // Suppress unused variable warning
-        let _ = tmp;
 
         Ok(tables)
     })
@@ -2829,11 +2823,8 @@ pub async fn snapshot_restore_preview(
     let creds = credentials::get_credentials(&profile.id)?;
 
     // Extract tables from snapshot
-    let schema = extract_schema_from_snapshot(
-        &paths.snapshots_dir.join(&snapshot.file_path),
-        &paths.tmp_dir,
-    )
-    .await?;
+    let schema =
+        extract_schema_from_snapshot(&paths.snapshots_dir.join(&snapshot.file_path)).await?;
     let snapshot_tables: Vec<String> = schema.keys().cloned().collect();
 
     // Get current database tables
@@ -3638,7 +3629,7 @@ pub struct SnapshotContentTable {
     pub table_name: String,
     pub columns: Vec<String>,
     pub row_count: usize,
-    pub sample_rows: Vec<Vec<String>>,
+    pub sample_rows: Vec<Vec<Option<String>>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -3652,6 +3643,8 @@ pub struct SnapshotContent {
 
 const MAX_SAMPLE_ROWS: usize = 50;
 const MAX_CELL_LENGTH: usize = 200;
+const MAX_SNAPSHOT_PARSE_BYTES: u64 = 1024 * 1024 * 1024;
+const MAX_SNAPSHOT_LINE_BYTES: usize = 16 * 1024 * 1024;
 
 /// Truncate a string value for display, appending an ellipsis if truncated.
 fn truncate_cell(value: &str) -> String {
@@ -3663,10 +3656,11 @@ fn truncate_cell(value: &str) -> String {
 
 /// Parse `MySQL` INSERT VALUES rows from a single INSERT statement line.
 /// Handles quoted strings (with escaped quotes), NULL, and numeric values.
-fn parse_mysql_insert_values(values_part: &str) -> Vec<Vec<String>> {
+fn parse_mysql_insert_values(values_part: &str) -> Vec<Vec<Option<String>>> {
     let mut rows = Vec::new();
-    let mut current_row: Vec<String> = Vec::new();
+    let mut current_row: Vec<Option<String>> = Vec::new();
     let mut current_value = String::new();
+    let mut current_value_quoted = false;
     let mut in_string = false;
     let mut escape_next = false;
     let mut depth = 0;
@@ -3706,6 +3700,7 @@ fn parse_mysql_insert_values(values_part: &str) -> Vec<Vec<String>> {
                     if depth == 1 {
                         current_row = Vec::new();
                         current_value = String::new();
+                        current_value_quoted = false;
                     } else {
                         current_value.push(ch);
                     }
@@ -3714,21 +3709,24 @@ fn parse_mysql_insert_values(values_part: &str) -> Vec<Vec<String>> {
                     depth -= 1;
                     if depth == 0 {
                         let trimmed = current_value.trim();
-                        if !trimmed.is_empty() || !current_row.is_empty() {
-                            current_row.push(truncate_cell(trimmed));
+                        if current_value_quoted || !trimmed.is_empty() || !current_row.is_empty() {
+                            current_row.push(parse_mysql_cell(trimmed, current_value_quoted));
                         }
                         rows.push(std::mem::take(&mut current_row));
                         current_value = String::new();
+                        current_value_quoted = false;
                     } else {
                         current_value.push(ch);
                     }
                 }
                 ',' if depth == 1 => {
-                    current_row.push(truncate_cell(current_value.trim()));
+                    current_row.push(parse_mysql_cell(current_value.trim(), current_value_quoted));
                     current_value = String::new();
+                    current_value_quoted = false;
                 }
                 '\'' if depth >= 1 => {
                     in_string = true;
+                    current_value_quoted = true;
                 }
                 _ => {
                     if depth >= 1 {
@@ -3742,6 +3740,14 @@ fn parse_mysql_insert_values(values_part: &str) -> Vec<Vec<String>> {
     }
 
     rows
+}
+
+fn parse_mysql_cell(value: &str, quoted: bool) -> Option<String> {
+    if !quoted && value.eq_ignore_ascii_case("NULL") {
+        None
+    } else {
+        Some(truncate_cell(value))
+    }
 }
 
 /// Extract the table name from an INSERT INTO statement.
@@ -3821,10 +3827,6 @@ pub async fn snapshot_browse_content(
     let db_type = profile_db_type.clone();
 
     let tables = tokio::task::spawn_blocking(move || {
-        let mut sql_content = Vec::new();
-        crate::compress::decompress_to_writer(&gz_path, &mut sql_content)?;
-        let sql_text = String::from_utf8_lossy(&sql_content);
-
         // Phase 1: Extract schema (table → columns) using existing pattern
         let mut schema: HashMap<String, Vec<String>> = HashMap::new();
         let mut current_table: Option<String> = None;
@@ -3832,13 +3834,18 @@ pub async fn snapshot_browse_content(
 
         // Phase 2: Track row data per table
         let mut row_counts: HashMap<String, usize> = HashMap::new();
-        let mut sample_rows: HashMap<String, Vec<Vec<String>>> = HashMap::new();
+        let mut sample_rows: HashMap<String, Vec<Vec<Option<String>>>> = HashMap::new();
 
         // PostgreSQL COPY state
         let mut in_pg_copy = false;
         let mut pg_copy_table = String::new();
 
-        for line in sql_text.lines() {
+        for line in crate::compress::decompressed_lines(
+            &gz_path,
+            MAX_SNAPSHOT_PARSE_BYTES,
+            MAX_SNAPSHOT_LINE_BYTES,
+        )? {
+            let line = line?;
             let trimmed = line.trim();
 
             // Skip empty lines and comments (except structured markers)
@@ -3910,12 +3917,9 @@ pub async fn snapshot_browse_content(
 
                 let table_samples = sample_rows.entry(pg_copy_table.clone()).or_default();
                 if table_samples.len() < MAX_SAMPLE_ROWS {
-                    let row: Vec<String> = line
+                    let row: Vec<Option<String>> = line
                         .split('\t')
-                        .map(|val| {
-                            let v = if val == "\\N" { "NULL" } else { val };
-                            truncate_cell(v)
-                        })
+                        .map(|val| (val != "\\N").then(|| truncate_cell(val)))
                         .collect();
                     table_samples.push(row);
                 }
@@ -3999,9 +4003,15 @@ mod tests {
 
     #[test]
     fn snapshot_content_parsers_handle_supported_dump_formats_and_unicode() {
-        let rows = parse_mysql_insert_values(&format!("(1,'{}')", "é".repeat(201)));
-        assert_eq!(rows[0][0], "1");
-        assert_eq!(rows[0][1], format!("{}…", "é".repeat(200)));
+        let rows = parse_mysql_insert_values(&format!("(1,'{}',NULL,'NULL','')", "é".repeat(201)));
+        assert_eq!(rows[0][0].as_deref(), Some("1"));
+        assert_eq!(
+            rows[0][1].as_deref(),
+            Some(format!("{}…", "é".repeat(200)).as_str())
+        );
+        assert_eq!(rows[0][2], None);
+        assert_eq!(rows[0][3].as_deref(), Some("NULL"));
+        assert_eq!(rows[0][4].as_deref(), Some(""));
 
         let (table, columns) =
             parse_pg_copy_line("COPY public.users (id, name) FROM stdin;").unwrap();

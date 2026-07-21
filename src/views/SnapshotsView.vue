@@ -51,6 +51,7 @@
   const browseData = ref<SnapshotContent | null>(null);
   const browseLoading = ref(false);
   const browseSelectedTable = ref<SnapshotContentTable | null>(null);
+  let browseRequestSequence = 0;
 
   const sourceProfile = computed(() => {
     if (!targetSnapshot.value) return null;
@@ -258,17 +259,21 @@
   }
 
   async function handleBrowse(id: string) {
+    const requestSequence = ++browseRequestSequence;
     browseLoading.value = true;
     browseDialogOpen.value = true;
     browseData.value = null;
     browseSelectedTable.value = null;
     try {
-      browseData.value = await snapshotStore.browseContent(id);
+      const data = await snapshotStore.browseContent(id);
+      if (requestSequence !== browseRequestSequence) return;
+      browseData.value = data;
     } catch (e) {
+      if (requestSequence !== browseRequestSequence) return;
       toast.error(`Failed to browse snapshot contents: ${e}`);
       browseDialogOpen.value = false;
     } finally {
-      browseLoading.value = false;
+      if (requestSequence === browseRequestSequence) browseLoading.value = false;
     }
   }
 
@@ -685,10 +690,10 @@
                       v-for="(cell, ci) in row"
                       :key="ci"
                       class="max-w-[150px] truncate px-2 py-1 font-mono text-text-secondary"
-                      :class="{ 'text-text-tertiary italic': cell === 'NULL' }"
-                      :title="cell"
+                      :class="{ 'text-text-tertiary italic': cell === null }"
+                      :title="cell ?? undefined"
                     >
-                      {{ cell }}
+                      {{ cell ?? "NULL" }}
                     </td>
                   </tr>
                 </tbody>

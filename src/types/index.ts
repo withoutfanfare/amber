@@ -213,7 +213,7 @@ export interface SnapshotContentTable {
   tableName: string;
   columns: string[];
   rowCount: number;
-  sampleRows: string[][];
+  sampleRows: (string | null)[][];
 }
 
 export interface SnapshotContent {

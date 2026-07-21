@@ -10,6 +10,7 @@ export default defineConfig({
   plugins: [vue(), tailwindcss()],
 
   resolve: {
+    preserveSymlinks: true,
     alias: {
       "@": resolve(__dirname, "src"),
     },
@@ -32,6 +33,11 @@ export default defineConfig({
     environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    server: {
+      deps: {
+        inline: ["@stuntrocket/ui"],
+      },
+    },
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,vue}"],
