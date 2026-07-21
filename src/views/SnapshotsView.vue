@@ -17,7 +17,14 @@
   import PageHeader from "@/components/layout/PageHeader.vue";
   import SnapshotTable from "@/components/features/SnapshotTable.vue";
   import SnapshotRestoreDialog from "@/components/features/SnapshotRestoreDialog.vue";
-  import type { Snapshot, SnapshotRestoreOptions, SchemaDiff, RestorePreview } from "@/types";
+  import type {
+    Snapshot,
+    SnapshotRestoreOptions,
+    SchemaDiff,
+    RestorePreview,
+    SnapshotContent,
+    SnapshotContentTable,
+  } from "@/types";
 
   const snapshotsDir = ref("");
 
@@ -40,6 +47,10 @@
   const compareData = ref<SchemaDiff | null>(null);
   const compareLoading = ref(false);
   const compareIds = ref<string[]>([]);
+  const browseDialogOpen = ref(false);
+  const browseData = ref<SnapshotContent | null>(null);
+  const browseLoading = ref(false);
+  const browseSelectedTable = ref<SnapshotContentTable | null>(null);
 
   const sourceProfile = computed(() => {
     if (!targetSnapshot.value) return null;
@@ -246,6 +257,32 @@
     }
   }
 
+  async function handleBrowse(id: string) {
+    browseLoading.value = true;
+    browseDialogOpen.value = true;
+    browseData.value = null;
+    browseSelectedTable.value = null;
+    try {
+      browseData.value = await snapshotStore.browseContent(id);
+    } catch (e) {
+      toast.error(`Failed to browse snapshot contents: ${e}`);
+      browseDialogOpen.value = false;
+    } finally {
+      browseLoading.value = false;
+    }
+  }
+
+  function selectBrowseTable(table: SnapshotContentTable) {
+    browseSelectedTable.value =
+      browseSelectedTable.value?.tableName === table.tableName ? null : table;
+  }
+
+  function formatRowCount(count: number): string {
+    if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+    if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
+    return count.toString();
+  }
+
   function handleTagFilter(tag: string) {
     snapshotStore.filterTag = snapshotStore.filterTag === tag ? null : tag;
   }
@@ -346,6 +383,7 @@
       @remove-tag="handleRemoveTag"
       @compare="handleCompare"
       @preview="handlePreview"
+      @browse="handleBrowse"
     />
 
     <!-- Restore dialog -->
@@ -527,6 +565,161 @@
               </div>
             </div>
           </div>
+        </div>
+      </template>
+    </SConfirmDialog>
+
+    <!-- Snapshot content browser dialog -->
+    <SConfirmDialog
+      :open="browseDialogOpen"
+      title="Browse Snapshot Contents"
+      message=""
+      confirm-label="Close"
+      @confirm="browseDialogOpen = false"
+      @cancel="browseDialogOpen = false"
+      @close="browseDialogOpen = false"
+    >
+      <template #default>
+        <div v-if="browseLoading" class="py-4 text-center text-sm text-text-secondary">
+          Extracting snapshot contents&hellip;
+        </div>
+        <div v-else-if="browseData" class="space-y-4">
+          <!-- Header -->
+          <div class="flex items-center justify-between">
+            <p class="text-sm font-medium text-text-primary">{{ browseData.snapshotName }}</p>
+            <div class="flex items-center gap-3 text-xs text-text-tertiary">
+              <span>{{ browseData.tables.length }} tables</span>
+              <span>{{ formatRowCount(browseData.totalRows) }} rows</span>
+              <span class="rounded bg-surface-raised px-1.5 py-0.5 font-mono uppercase">{{
+                browseData.dbType
+              }}</span>
+            </div>
+          </div>
+
+          <!-- Table list -->
+          <div class="max-h-48 overflow-y-auto rounded-lg border border-border-subtle">
+            <table class="w-full text-xs">
+              <thead>
+                <tr
+                  class="sticky top-0 border-b border-border-subtle bg-surface-base text-left text-text-tertiary uppercase"
+                >
+                  <th class="px-3 py-1.5 font-semibold">Table</th>
+                  <th class="px-3 py-1.5 text-right font-semibold">Columns</th>
+                  <th class="px-3 py-1.5 text-right font-semibold">Rows</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="table in browseData.tables"
+                  :key="table.tableName"
+                  class="cursor-pointer border-b border-border-subtle transition-colors last:border-0 hover:bg-surface-raised/50"
+                  :class="{
+                    'bg-accent/5': browseSelectedTable?.tableName === table.tableName,
+                  }"
+                  @click="selectBrowseTable(table)"
+                >
+                  <td class="px-3 py-1.5 font-mono font-medium text-text-primary">
+                    {{ table.tableName }}
+                  </td>
+                  <td class="px-3 py-1.5 text-right text-text-secondary">
+                    {{ table.columns.length }}
+                  </td>
+                  <td class="px-3 py-1.5 text-right font-mono text-text-secondary">
+                    {{ formatRowCount(table.rowCount) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Selected table detail -->
+          <div v-if="browseSelectedTable" class="space-y-3">
+            <div class="flex items-center justify-between">
+              <p class="text-sm font-medium text-text-primary">
+                {{ browseSelectedTable.tableName }}
+              </p>
+              <span class="text-xs text-text-tertiary"
+                >{{ browseSelectedTable.columns.length }} columns &middot;
+                {{ formatRowCount(browseSelectedTable.rowCount) }} rows</span
+              >
+            </div>
+
+            <!-- Column list -->
+            <div class="flex flex-wrap gap-1">
+              <span
+                v-for="col in browseSelectedTable.columns"
+                :key="col"
+                class="rounded bg-surface-raised px-2 py-0.5 font-mono text-[10px] text-text-secondary"
+                >{{ col }}</span
+              >
+            </div>
+
+            <!-- Sample data grid -->
+            <div
+              v-if="browseSelectedTable.sampleRows.length > 0"
+              class="max-h-60 overflow-auto rounded-lg border border-border-subtle"
+            >
+              <table class="w-full text-xs">
+                <thead>
+                  <tr
+                    class="sticky top-0 border-b border-border-subtle bg-surface-base text-left text-text-tertiary"
+                  >
+                    <th class="px-2 py-1 text-center font-semibold">#</th>
+                    <th
+                      v-for="col in browseSelectedTable.columns"
+                      :key="col"
+                      class="max-w-[150px] truncate px-2 py-1 font-mono font-semibold"
+                    >
+                      {{ col }}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(row, idx) in browseSelectedTable.sampleRows"
+                    :key="idx"
+                    class="border-b border-border-subtle last:border-0"
+                  >
+                    <td class="px-2 py-1 text-center text-text-tertiary">{{ idx + 1 }}</td>
+                    <td
+                      v-for="(cell, ci) in row"
+                      :key="ci"
+                      class="max-w-[150px] truncate px-2 py-1 font-mono text-text-secondary"
+                      :class="{ 'text-text-tertiary italic': cell === 'NULL' }"
+                      :title="cell"
+                    >
+                      {{ cell }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p
+              v-else
+              class="rounded-lg bg-surface-raised px-3 py-2 text-center text-xs text-text-tertiary"
+            >
+              No data rows found for this table.
+            </p>
+
+            <p
+              v-if="
+                browseSelectedTable.sampleRows.length > 0 &&
+                browseSelectedTable.rowCount > browseSelectedTable.sampleRows.length
+              "
+              class="text-[10px] text-text-tertiary"
+            >
+              Showing {{ browseSelectedTable.sampleRows.length }} of
+              {{ formatRowCount(browseSelectedTable.rowCount) }} rows.
+            </p>
+          </div>
+
+          <!-- Prompt to select a table -->
+          <p
+            v-else
+            class="rounded-lg bg-surface-raised px-3 py-2 text-center text-xs text-text-tertiary"
+          >
+            Click a table above to view its columns and sample data.
+          </p>
         </div>
       </template>
     </SConfirmDialog>

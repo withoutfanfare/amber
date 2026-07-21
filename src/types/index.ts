@@ -209,6 +209,20 @@ export interface ExportResult {
   sizeBytes: number;
 }
 
+export interface SnapshotContentTable {
+  tableName: string;
+  columns: string[];
+  rowCount: number;
+  sampleRows: string[][];
+}
+
+export interface SnapshotContent {
+  snapshotName: string;
+  dbType: string;
+  tables: SnapshotContentTable[];
+  totalRows: number;
+}
+
 export interface HealthCheckResult {
   profileId: string;
   status: "connected" | "unreachable" | "unchecked";
