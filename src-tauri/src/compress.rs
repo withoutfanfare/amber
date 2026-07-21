@@ -2,7 +2,7 @@ use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use std::fs::File;
-use std::io::{self, BufReader, BufWriter, Read, Write};
+use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::path::Path;
 
 /// Compress a raw SQL file to .sql.gz using streaming gzip.
@@ -41,6 +41,85 @@ pub fn decompress_to_writer<W: Write>(gz_path: &Path, writer: &mut W) -> Result<
     }
 
     Ok(())
+}
+
+/// Stream a gzip file as bounded, owned lines.
+pub fn decompressed_lines(
+    gz_path: &Path,
+    max_bytes: u64,
+    max_line_bytes: usize,
+) -> Result<impl Iterator<Item = Result<String, io::Error>>, io::Error> {
+    let file = File::open(gz_path)?;
+    let decoder = GzDecoder::new(BufReader::new(file));
+    let mut reader = BufReader::with_capacity(64 * 1024, decoder);
+    let mut line = Vec::new();
+    let mut total_bytes = 0u64;
+    let mut finished = false;
+
+    Ok(std::iter::from_fn(move || {
+        if finished {
+            return None;
+        }
+
+        line.clear();
+        let mut read_any = false;
+
+        loop {
+            let buffer = match reader.fill_buf() {
+                Ok(buffer) => buffer,
+                Err(error) => {
+                    finished = true;
+                    return Some(Err(error));
+                }
+            };
+            if buffer.is_empty() {
+                finished = true;
+                break;
+            }
+
+            read_any = true;
+            let newline = buffer.iter().position(|byte| *byte == b'\n');
+            let consumed = newline.map_or(buffer.len(), |position| position + 1);
+            let content_bytes = newline.unwrap_or(consumed);
+
+            let Some(next_total) = total_bytes.checked_add(consumed as u64) else {
+                finished = true;
+                return Some(Err(io::Error::other("Decompressed snapshot size overflow")));
+            };
+            total_bytes = next_total;
+            if total_bytes > max_bytes {
+                finished = true;
+                return Some(Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Decompressed snapshot exceeds the {max_bytes}-byte inspection limit"),
+                )));
+            }
+
+            if line.len().saturating_add(content_bytes) > max_line_bytes {
+                finished = true;
+                return Some(Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    format!("Snapshot line exceeds the {max_line_bytes}-byte inspection limit"),
+                )));
+            }
+
+            line.extend_from_slice(&buffer[..content_bytes]);
+            reader.consume(consumed);
+
+            if newline.is_some() {
+                break;
+            }
+        }
+
+        if !read_any {
+            return None;
+        }
+
+        if line.last() == Some(&b'\r') {
+            line.pop();
+        }
+        Some(Ok(String::from_utf8_lossy(&line).into_owned()))
+    }))
 }
 
 /// Compress subprocess stdout directly to a .sql.gz file (zero intermediate file).
@@ -121,4 +200,31 @@ where
     encoder.finish()?;
 
     Ok(std::fs::metadata(output)?.len())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn streams_decompressed_lines_with_size_limits() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snapshot.sql.gz");
+        compress_from_reader(std::io::Cursor::new(b"one\ntwo\n"), &path).unwrap();
+
+        let lines = decompressed_lines(&path, 8, 3)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(lines, ["one", "two"]);
+
+        assert!(decompressed_lines(&path, 7, 3)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .is_err());
+        assert!(decompressed_lines(&path, 8, 2)
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .is_err());
+    }
 }
